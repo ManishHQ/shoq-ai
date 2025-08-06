@@ -10,6 +10,9 @@ export interface User extends mongoose.Document {
 	password: string;
 	otpCode: string;
 	isVerified: boolean;
+	chatId: number;
+	balance: number;
+	registeredAt: Date;
 	comparePassword: (password: string) => Promise<boolean>;
 	generateToken: () => string;
 	generateOtpCode: () => string;
@@ -32,12 +35,11 @@ const userSchema = new mongoose.Schema<User>(
 		},
 		email: {
 			type: String,
-			required: true,
-			unique: true,
+			required: false,
 		},
 		password: {
 			type: String,
-			required: true,
+			required: false,
 		},
 		isVerified: {
 			type: Boolean,
@@ -46,13 +48,28 @@ const userSchema = new mongoose.Schema<User>(
 		otpCode: {
 			type: String,
 		},
+		chatId: {
+			type: Number,
+			required: true,
+			unique: true,
+			index: true,
+		},
+		balance: {
+			type: Number,
+			default: 0,
+			min: 0,
+		},
+		registeredAt: {
+			type: Date,
+			default: Date.now,
+		},
 	},
 	{ timestamps: true }
 );
 
-// encrypt password before saving
+// encrypt password before saving (only if password exists)
 userSchema.pre<User>('save', async function (next) {
-	if (this.isModified('password')) {
+	if (this.isModified('password') && this.password) {
 		this.password = await bcrypt.hash(this.password, 10);
 	}
 	next();

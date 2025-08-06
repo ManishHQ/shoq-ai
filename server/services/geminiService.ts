@@ -229,6 +229,25 @@ Please analyze the user's intent and respond appropriately. If they want to perf
 		};
 	}
 
+	public generateInlineKeyboard(uiActions: any[]) {
+		const rows = [];
+
+		for (const action of uiActions) {
+			rows.push([
+				{
+					text: action.text,
+					callback_data: `${action.action}_${action.orderId || action.category || ''}`,
+				},
+			]);
+		}
+
+		return {
+			reply_markup: {
+				inline_keyboard: rows,
+			},
+		};
+	}
+
 	public async getRecommendations(userPreferences: string): Promise<string> {
 		try {
 			const prompt = `${this.getSystemPrompt()}

@@ -177,6 +177,12 @@ class ActionHandler {
 			case 'PURCHASE_ITEM':
 				return this.purchaseItem(parameters, userId);
 
+			case 'CONFIRM_PURCHASE':
+				return this.confirmPurchase(parameters, userId);
+
+			case 'CONFIRM_BOOKING':
+				return this.confirmBooking(parameters, userId);
+
 			case 'SEARCH_TICKETS':
 				return this.searchTickets(parameters);
 
@@ -224,18 +230,70 @@ class ActionHandler {
 			};
 		}
 
-		const bookingId = Math.floor(Math.random() * 1000000);
+		// Import User model to check balance
+		const User = (await import('../models/user.model.js')).default;
+		const user = await User.findOne({ chatId: userId });
+		
+		if (!user) {
+			return {
+				success: false,
+				message: '❌ User not found. Please use /start to register.',
+			};
+		}
+
 		const totalPrice = ticket.price * quantity;
+		const canAfford = user.balance >= totalPrice;
+		const balanceAfter = user.balance - totalPrice;
+
+		// Show ticket details and ask for confirmation
+		const message = `🎫 **Ticket Details**
+
+**${ticket.name}**
+💰 Price: $${ticket.price}
+📦 Quantity: ${quantity}
+💳 **Total: $${totalPrice}**
+
+💰 **Your Balance:** $${user.balance}
+${canAfford ? `✅ **After Purchase:** $${balanceAfter}` : `❌ **Insufficient Balance** - Need $${totalPrice - user.balance} more`}
+
+${canAfford ? 'Ready to confirm your booking?' : 'Please make a deposit to book this ticket.'}`;
 
 		return {
 			success: true,
-			message: `🎉 Woo-hoo! Your booking is confirmed!\n\n✅ ${quantity}x "${ticket.name}"\n💰 Total: $${totalPrice}\n🎫 Booking ID: #${bookingId}\n\nThanks for choosing us! 🎊`,
+			message: message,
 			data: {
-				bookingId,
+				ticketId: ticket.id,
 				ticket: ticket.name,
 				quantity,
 				totalPrice,
 				userId,
+				canAfford,
+				// UI Action suggestions
+				uiActions: canAfford ? [
+					{
+						type: 'button',
+						text: '✅ Confirm Booking',
+						action: 'confirm_booking',
+						ticketId: ticket.id,
+						quantity: quantity,
+					},
+					{
+						type: 'button',
+						text: '❌ Cancel',
+						action: 'cancel_booking',
+					},
+				] : [
+					{
+						type: 'button',
+						text: '💰 Make Deposit',
+						action: 'deposit',
+					},
+					{
+						type: 'button',
+						text: '🎫 Browse Other Tickets',
+						action: 'browse_tickets',
+					},
+				],
 			},
 		};
 	}
@@ -277,22 +335,55 @@ class ActionHandler {
 			};
 		}
 
-		const orderId = Math.floor(Math.random() * 1000000);
+		// Import User model to check balance
+		const User = (await import('../models/user.model.js')).default;
+		const user = await User.findOne({ chatId: userId });
+		
+		if (!user) {
+			return {
+				success: false,
+				message: '❌ User not found. Please use /start to register.',
+			};
+		}
+
 		const totalPrice = foundItem.price * quantity;
 		const shippingCost = totalPrice > 50 ? 0 : 5;
 		const finalTotal = totalPrice + shippingCost;
 
+		// Check if user has sufficient balance
+		const canAfford = user.balance >= finalTotal;
+		const balanceAfter = user.balance - finalTotal;
+
+		// Show item details and ask for confirmation
+		const message = `🛍️ **Item Details**
+
+**${foundItem.name}**
+💰 Price: $${foundItem.price}
+📦 Quantity: ${quantity}
+🚚 Shipping: $${shippingCost}
+💳 **Total: $${finalTotal}**
+
+📂 Category: ${foundItem.category}
+📝 ${foundItem.description}
+⭐ Rating: ${foundItem.rating}/5 (${foundItem.reviews} reviews)
+
+💰 **Your Balance:** $${user.balance}
+${canAfford ? `✅ **After Purchase:** $${balanceAfter}` : `❌ **Insufficient Balance** - Need $${finalTotal - user.balance} more`}
+
+${canAfford ? 'Ready to confirm your purchase?' : 'Please make a deposit to purchase this item.'}`;
+
 		return {
 			success: true,
-			message: `🎉 Woo-hoo! Your order is confirmed!\n\n✅ ${quantity}x "${foundItem.name}"\n💰 Total: $${finalTotal} (including $${shippingCost} shipping)\n🛍️ Order ID: #${orderId}\n\nThanks for shopping with us! 🛍️`,
+			message: message,
 			data: {
-				orderId,
+				itemId: foundItem.id,
 				item: foundItem.name,
 				quantity,
 				totalPrice,
 				shippingCost,
 				finalTotal,
 				userId,
+				canAfford,
 				// Rich data for UI building
 				itemDetails: {
 					id: foundItem.id,
@@ -319,24 +410,29 @@ class ActionHandler {
 					}),
 				},
 				// UI Action suggestions
-				uiActions: [
+				uiActions: canAfford ? [
 					{
 						type: 'button',
-						text: 'View Order Details',
-						action: 'view_order',
-						orderId: orderId,
+						text: '✅ Confirm Purchase',
+						action: 'confirm_purchase',
+						itemId: foundItem.id,
+						quantity: quantity,
 					},
 					{
 						type: 'button',
-						text: 'Track Order',
-						action: 'track_order',
-						orderId: orderId,
+						text: '❌ Cancel',
+						action: 'cancel_purchase',
+					},
+				] : [
+					{
+						type: 'button',
+						text: '💰 Make Deposit',
+						action: 'deposit',
 					},
 					{
 						type: 'button',
-						text: 'Buy Similar Items',
-						action: 'recommend_similar',
-						category: foundItem.category,
+						text: '🛍️ Browse Other Items',
+						action: 'browse_items',
 					},
 				],
 			},
@@ -506,6 +602,169 @@ class ActionHandler {
 			success: true,
 			message: `✨ Recommendations for you:\n\n${recommendations.join('\n')}`,
 			data: { recommendations },
+		};
+	}
+
+	private async confirmPurchase(
+		parameters: any,
+		userId: number
+	): Promise<ActionResult> {
+		const { itemId, quantity = 1 } = parameters;
+
+		// Find the item
+		const foundItem = this.shopItems.find((i) => i.id === parseInt(itemId));
+
+		if (!foundItem || !foundItem.available) {
+			return {
+				success: false,
+				message: '❌ Item is no longer available.',
+			};
+		}
+
+		// Import orderService dynamically to avoid circular dependencies
+		const { orderService } = await import('./orderService.js');
+
+		const totalPrice = foundItem.price * quantity;
+		const shippingCost = totalPrice > 50 ? 0 : 5;
+		const finalTotal = totalPrice + shippingCost;
+
+		// Create actual order in database
+		const orderResult = await orderService.createOrder({
+			chatId: userId,
+			item: foundItem.name,
+			quantity,
+			totalPrice: finalTotal,
+		});
+
+		if (!orderResult.success) {
+			return {
+				success: false,
+				message: orderResult.message,
+			};
+		}
+
+		return {
+			success: true,
+			message: `🎉 Woo-hoo! Your order is confirmed!\n\n✅ ${quantity}x "${foundItem.name}"\n💰 Total: $${finalTotal} (including $${shippingCost} shipping)\n🛍️ Order ID: #${orderResult.order.orderId}\n\nThanks for shopping with us! 🛍️`,
+			data: {
+				orderId: orderResult.order.orderId,
+				item: foundItem.name,
+				quantity,
+				totalPrice,
+				shippingCost,
+				finalTotal,
+				userId,
+				// Rich data for UI building
+				itemDetails: {
+					id: foundItem.id,
+					name: foundItem.name,
+					price: foundItem.price,
+					category: foundItem.category,
+					description: foundItem.description,
+					imageUrl: foundItem.imageUrl,
+					colors: foundItem.colors,
+					rating: foundItem.rating,
+					reviews: foundItem.reviews,
+					// Additional properties if they exist
+					...(foundItem.sizes && { sizes: foundItem.sizes }),
+					...(foundItem.features && { features: foundItem.features }),
+					...(foundItem.compatibility && {
+						compatibility: foundItem.compatibility,
+					}),
+					...(foundItem.material && { material: foundItem.material }),
+					...(foundItem.capacity && { capacity: foundItem.capacity }),
+					...(foundItem.pages && { pages: foundItem.pages }),
+					...(foundItem.author && { author: foundItem.author }),
+					...(foundItem.connectivity && {
+						connectivity: foundItem.connectivity,
+					}),
+				},
+				// UI Action suggestions
+				uiActions: [
+					{
+						type: 'button',
+						text: 'View Order Details',
+						action: 'view_order',
+						orderId: orderResult.order.orderId,
+					},
+					{
+						type: 'button',
+						text: 'Track Order',
+						action: 'track_order',
+						orderId: orderResult.order.orderId,
+					},
+					{
+						type: 'button',
+						text: 'Buy Similar Items',
+						action: 'recommend_similar',
+						category: foundItem.category,
+					},
+				],
+			},
+		};
+	}
+
+	private async confirmBooking(
+		parameters: any,
+		userId: number
+	): Promise<ActionResult> {
+		const { ticketId, quantity = 1 } = parameters;
+
+		// Find the ticket
+		const ticket = this.tickets.find((t) => t.id === parseInt(ticketId));
+
+		if (!ticket || !ticket.available) {
+			return {
+				success: false,
+				message: '❌ Ticket is no longer available.',
+			};
+		}
+
+		// Import orderService dynamically to avoid circular dependencies
+		const { orderService } = await import('./orderService.js');
+
+		const totalPrice = ticket.price * quantity;
+
+		// Create actual order in database
+		const orderResult = await orderService.createOrder({
+			chatId: userId,
+			item: ticket.name,
+			quantity,
+			totalPrice,
+		});
+
+		if (!orderResult.success) {
+			return {
+				success: false,
+				message: orderResult.message,
+			};
+		}
+
+		return {
+			success: true,
+			message: `🎉 Woo-hoo! Your booking is confirmed!\n\n✅ ${quantity}x "${ticket.name}"\n💰 Total: $${totalPrice}\n🎫 Order ID: #${orderResult.order.orderId}\n\nThanks for choosing us! 🎊`,
+			data: {
+				orderId: orderResult.order.orderId,
+				ticket: ticket.name,
+				quantity,
+				totalPrice,
+				userId,
+				// UI Action suggestions for tickets
+				uiActions: [
+					{
+						type: 'button',
+						text: 'View Order Details',
+						action: 'view_order',
+						orderId: orderResult.order.orderId,
+					},
+					{
+						type: 'button',
+						text: 'Track Order',
+						action: 'track_order',
+						orderId: orderResult.order.orderId,
+					},
+				],
+			},
 		};
 	}
 }

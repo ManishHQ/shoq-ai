@@ -15,6 +15,8 @@ import authRoutes from './routes/auth.route.js';
 import ticketsRoutes from './routes/tickets.route.js';
 import shopRoutes from './routes/shop.route.js';
 import debugRoutes from './routes/debug.route.js';
+import usdcRoutes from './routes/usdc.route.js';
+import tokenRoutes from './routes/token.route.js';
 
 // init app
 const app = express();
@@ -23,7 +25,7 @@ const app = express();
 const PORT = process.env.PORT || 8000;
 
 // connect to database
-// connectDB((process.env.MONGO_URL as string) || '');
+connectDB((process.env.MONGO_URL as string) || 'mongodb://localhost:27017/shoq');
 
 // middleware
 app.use(morgan('dev'));
@@ -71,6 +73,8 @@ app.use('/auth', authRoutes);
 app.use('/tickets', ticketsRoutes);
 app.use('/shop', shopRoutes);
 app.use('/debug', debugRoutes);
+app.use('/usdc', usdcRoutes);
+app.use('/token', tokenRoutes);
 
 // test route
 app.use('/test', (req: Request, res: Response) => {
