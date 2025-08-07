@@ -376,6 +376,118 @@ const getItemsByCategory: RequestHandler = (req, res) => {
 	}
 };
 
+// Create new item (Admin)
+const createItem: RequestHandler = (req, res) => {
+	try {
+		const { name, price, category, description, stock, image } = req.body;
+
+		if (!name || !price || !category || !description) {
+			res.status(400).json({
+				status: 'error',
+				message: 'Name, price, category, and description are required',
+			});
+			return;
+		}
+
+		const newId = Math.max(...SHOP_ITEMS.map(item => item.id)) + 1;
+		
+		const newItem = {
+			id: newId,
+			name,
+			price: Number(price),
+			category,
+			available: true,
+			description,
+			stock: Number(stock) || 0,
+			image: image || `https://via.placeholder.com/300x300?text=${encodeURIComponent(name)}`,
+		};
+
+		SHOP_ITEMS.push(newItem);
+
+		res.status(201).json({
+			status: 'success',
+			message: 'Item created successfully',
+			data: { item: newItem },
+		});
+	} catch (error) {
+		res.status(500).json({
+			status: 'error',
+			message: 'Failed to create item',
+		});
+	}
+};
+
+// Update item (Admin)
+const updateItem: RequestHandler = (req, res) => {
+	try {
+		const itemId = parseInt(req.params.id);
+		const { name, price, category, description, stock, image, available } = req.body;
+
+		const itemIndex = SHOP_ITEMS.findIndex(item => item.id === itemId);
+
+		if (itemIndex === -1) {
+			res.status(404).json({
+				status: 'error',
+				message: 'Item not found',
+			});
+			return;
+		}
+
+		const updatedItem = {
+			...SHOP_ITEMS[itemIndex],
+			...(name && { name }),
+			...(price !== undefined && { price: Number(price) }),
+			...(category && { category }),
+			...(description && { description }),
+			...(stock !== undefined && { stock: Number(stock) }),
+			...(image && { image }),
+			...(available !== undefined && { available: Boolean(available) }),
+		};
+
+		SHOP_ITEMS[itemIndex] = updatedItem;
+
+		res.json({
+			status: 'success',
+			message: 'Item updated successfully',
+			data: { item: updatedItem },
+		});
+	} catch (error) {
+		res.status(500).json({
+			status: 'error',
+			message: 'Failed to update item',
+		});
+	}
+};
+
+// Delete item (Admin)
+const deleteItem: RequestHandler = (req, res) => {
+	try {
+		const itemId = parseInt(req.params.id);
+		const itemIndex = SHOP_ITEMS.findIndex(item => item.id === itemId);
+
+		if (itemIndex === -1) {
+			res.status(404).json({
+				status: 'error',
+				message: 'Item not found',
+			});
+			return;
+		}
+
+		const deletedItem = SHOP_ITEMS.splice(itemIndex, 1)[0];
+
+		res.json({
+			status: 'success',
+			message: 'Item deleted successfully',
+			data: { item: deletedItem },
+		});
+	} catch (error) {
+		res.status(500).json({
+			status: 'error',
+			message: 'Failed to delete item',
+		});
+	}
+};
+
 // Routes
 router.get('/', getAllItems);
 router.get('/item/:id', getItemById);
@@ -384,5 +496,10 @@ router.get('/search/:query', searchItems);
 router.get('/categories', getCategories);
 router.get('/featured', getFeaturedItems);
 router.get('/category/:category', getItemsByCategory);
+
+// Admin routes
+router.post('/admin/items', createItem);
+router.put('/admin/items/:id', updateItem);
+router.delete('/admin/items/:id', deleteItem);
 
 export default router;

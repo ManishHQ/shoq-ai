@@ -9,8 +9,13 @@
 	"scripts": {
 		"build:dev": "tsc --project tsconfig.json && cp .env dist/.env",
 		"build": "tsc --watch --project tsconfig.json",
+		"build:mcp": "tsc --project tsconfig.json",
 		"start": "node dist/app.js",
+		"start:mcp": "node dist/mcp-server.js",
+		"start:mcp-http": "node dist/mcp-http-server.js",
 		"dev": "tsx watch --env-file=.env app.ts",
+		"dev:mcp": "tsx --env-file=.env mcp-server.ts",
+		"dev:mcp-http": "tsx --env-file=.env mcp-http-server.ts",
 		"test": "node test-server.cjs"
 	},
 	"engines": {
@@ -20,6 +25,7 @@
 		"@google/genai": "^1.12.0",
 		"@google/generative-ai": "^0.24.1",
 		"@hashgraph/sdk": "^2.69.0",
+		"@modelcontextprotocol/sdk": "^1.17.1",
 		"bcryptjs": "^3.0.2",
 		"cors": "^2.8.5",
 		"dotenv": "^16.4.7",

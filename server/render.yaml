@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: shoq-mcp-server
+    env: node
+    buildCommand: npm run build:mcp
+    startCommand: npm run start:mcp-http
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MCP_PORT
+        value: 10000

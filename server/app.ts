@@ -17,6 +17,7 @@ import shopRoutes from './routes/shop.route.js';
 import debugRoutes from './routes/debug.route.js';
 import usdcRoutes from './routes/usdc.route.js';
 import tokenRoutes from './routes/token.route.js';
+import chatRoutes from './routes/chat.route.js';
 
 // init app
 const app = express();
@@ -25,7 +26,9 @@ const app = express();
 const PORT = process.env.PORT || 8000;
 
 // connect to database
-connectDB((process.env.MONGO_URL as string) || 'mongodb://localhost:27017/shoq');
+connectDB(
+	(process.env.MONGO_URL as string) || 'mongodb://localhost:27017/shoq'
+);
 
 // middleware
 app.use(morgan('dev'));
@@ -33,20 +36,7 @@ app.use(express.json());
 app.use(
 	cors({
 		origin: function (origin, callback) {
-			const allowedOrigins = [
-				'https://superpa.ge',
-				'https://www.superpa.ge',
-				'https://api.superpa.ge',
-				'http://localhost:5173',
-				'http://localhost:3000',
-				'chrome-extension://lgkfiojcgedoedeiopkeaemkhenogmhf',
-				'https://github.com',
-				'https://www.github.com',
-				'https://www.youtube.com',
-				'https://youtube.com',
-				'https://x.com',
-				'https://www.x.com',
-			];
+			const allowedOrigins = ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:3001'];
 
 			// Allow requests with no origin (like mobile apps or curl requests)
 			if (!origin) return callback(null, true);
@@ -75,6 +65,7 @@ app.use('/shop', shopRoutes);
 app.use('/debug', debugRoutes);
 app.use('/usdc', usdcRoutes);
 app.use('/token', tokenRoutes);
+app.use('/chat', chatRoutes);
 
 // test route
 app.use('/test', (req: Request, res: Response) => {
