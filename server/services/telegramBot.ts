@@ -50,7 +50,8 @@ class TelegramBotService {
 	private actionHandler: ActionHandler;
 	private conversationContext: Map<number, any> = new Map();
 	private loggingService: LoggingService;
-	private pendingDeposits: Map<number, { step: string; data?: any }> = new Map();
+	private pendingDeposits: Map<number, { step: string; data?: any }> =
+		new Map();
 
 	constructor() {
 		const token = process.env.TELEGRAM_BOT_TOKEN || 'YOUR_BOT_TOKEN_HERE';
@@ -110,11 +111,11 @@ class TelegramBotService {
 		const chatId = msg.chat.id;
 		const username = msg.from?.username || '';
 		const firstName = msg.from?.first_name || '';
-		
+
 		try {
 			// Check if user exists in database
 			let user = await User.findOne({ chatId });
-			
+
 			if (!user) {
 				// Register new user
 				user = new User({
@@ -124,13 +125,13 @@ class TelegramBotService {
 					balance: 0,
 					registeredAt: new Date(),
 				});
-				
+
 				await user.save();
 				console.log(`✅ New user registered: ${username} (${chatId})`);
 			} else {
 				console.log(`👋 Existing user: ${username} (${chatId})`);
 			}
-			
+
 			const welcomeMessage = `
 🎉 Welcome to Shoq Bot!
 
@@ -169,7 +170,10 @@ Just chat with me naturally - I'll understand what you need! 😊
 			});
 		} catch (error) {
 			console.error('Error in handleStart:', error);
-			await this.bot.sendMessage(chatId, '❌ Sorry, there was an error processing your request. Please try again.');
+			await this.bot.sendMessage(
+				chatId,
+				'❌ Sorry, there was an error processing your request. Please try again.'
+			);
 		}
 	}
 
@@ -256,7 +260,10 @@ Need more help? Contact support!
 			// Check user balance first
 			const user = await User.findOne({ chatId });
 			if (!user) {
-				await this.bot.sendMessage(chatId, '❌ Please use /start to register first.');
+				await this.bot.sendMessage(
+					chatId,
+					'❌ Please use /start to register first.'
+				);
 				return;
 			}
 
@@ -281,17 +288,20 @@ Need more help? Contact support!
 			};
 
 			availableItems.forEach((item) => {
-				const canAfford = user.balance >= item.price ? '✅ Affordable' : '❌ Need more funds';
+				const canAfford =
+					user.balance >= item.price ? '✅ Affordable' : '❌ Need more funds';
 				message += `🛍️ **${item.name}**\n💰 Price: $${item.price}\n📂 Category: ${item.category}\n${canAfford}\n\n`;
 			});
 
-			message += user.balance === 0 ? 
-				'💡 **Make a deposit first to start shopping!**' : 
-				'Click on an item to buy it!';
+			message +=
+				user.balance === 0
+					? '💡 **Make a deposit first to start shopping!**'
+					: 'Click on an item to buy it!';
 
-			const extraButtons = user.balance === 0 ? 
-				[[{ text: '💰 Make Deposit', callback_data: 'deposit' }]] : 
-				[[{ text: '💳 Check Balance', callback_data: 'balance' }]];
+			const extraButtons =
+				user.balance === 0
+					? [[{ text: '💰 Make Deposit', callback_data: 'deposit' }]]
+					: [[{ text: '💳 Check Balance', callback_data: 'balance' }]];
 
 			keyboard.inline_keyboard.push(...extraButtons);
 
@@ -301,7 +311,10 @@ Need more help? Contact support!
 			});
 		} catch (error) {
 			console.error('Error showing shop items:', error);
-			await this.bot.sendMessage(chatId, '❌ Error loading shop items. Please try again.');
+			await this.bot.sendMessage(
+				chatId,
+				'❌ Error loading shop items. Please try again.'
+			);
 		}
 	}
 
@@ -333,7 +346,9 @@ Need more help? Contact support!
 		} else if (data === 'chat') {
 			await this.handleChat({ chat: { id: chatId } } as TelegramBot.Message);
 		} else if (data === 'chat_history') {
-			await this.handleConversationHistory({ chat: { id: chatId } } as TelegramBot.Message);
+			await this.handleConversationHistory({
+				chat: { id: chatId },
+			} as TelegramBot.Message);
 		} else if (data === 'pricing') {
 			const pricingResponse = await this.actionHandler.executeAction(
 				{
@@ -430,7 +445,10 @@ Would you like to book this ticket?
 		try {
 			const user = await User.findOne({ chatId });
 			if (!user) {
-				await this.bot.sendMessage(chatId, '❌ Please use /start to register first.');
+				await this.bot.sendMessage(
+					chatId,
+					'❌ Please use /start to register first.'
+				);
 				return;
 			}
 
@@ -460,23 +478,28 @@ ${canAfford ? 'Would you like to buy this item?' : 'Please make a deposit to pur
     `;
 
 			const keyboard = {
-				inline_keyboard: canAfford ? [
-					[
-						{
-							text: '✅ Confirm Purchase',
-							callback_data: `confirm_item_${itemId}`,
-						},
-						{ text: '❌ Cancel', callback_data: 'shop' },
-					],
-					[
-						{ text: '🔍 View Order Preview', callback_data: `preview_item_${itemId}` },
-					],
-				] : [
-					[
-						{ text: '💰 Make Deposit', callback_data: 'deposit' },
-						{ text: '🛍️ Back to Shop', callback_data: 'shop' },
-					],
-				],
+				inline_keyboard: canAfford
+					? [
+							[
+								{
+									text: '✅ Confirm Purchase',
+									callback_data: `confirm_item_${itemId}`,
+								},
+								{ text: '❌ Cancel', callback_data: 'shop' },
+							],
+							[
+								{
+									text: '🔍 View Order Preview',
+									callback_data: `preview_item_${itemId}`,
+								},
+							],
+						]
+					: [
+							[
+								{ text: '💰 Make Deposit', callback_data: 'deposit' },
+								{ text: '🛍️ Back to Shop', callback_data: 'shop' },
+							],
+						],
 			};
 
 			await this.bot.sendMessage(chatId, message, {
@@ -485,7 +508,10 @@ ${canAfford ? 'Would you like to buy this item?' : 'Please make a deposit to pur
 			});
 		} catch (error) {
 			console.error('Error handling item selection:', error);
-			await this.bot.sendMessage(chatId, '❌ Error loading item details. Please try again.');
+			await this.bot.sendMessage(
+				chatId,
+				'❌ Error loading item details. Please try again.'
+			);
 		}
 	}
 
@@ -565,15 +591,16 @@ Thank you for your purchase! 🛍️
 				const keyboard = {
 					inline_keyboard: [
 						[
-							{ text: '🔍 View Order', callback_data: `view_order_${orderResult.order.orderId}` },
+							{
+								text: '🔍 View Order',
+								callback_data: `view_order_${orderResult.order.orderId}`,
+							},
 						],
 						[
 							{ text: '🛍️ Buy Another Item', callback_data: 'shop' },
 							{ text: '💳 Check Balance', callback_data: 'balance' },
 						],
-						[
-							{ text: '🏠 Back to Menu', callback_data: 'start' },
-						],
+						[{ text: '🏠 Back to Menu', callback_data: 'start' }],
 					],
 				};
 
@@ -593,9 +620,7 @@ Please try again or contact support if the issue persists.`;
 							{ text: '💰 Make Deposit', callback_data: 'deposit' },
 							{ text: '🛍️ Back to Shop', callback_data: 'shop' },
 						],
-						[
-							{ text: '🏠 Back to Menu', callback_data: 'start' },
-						],
+						[{ text: '🏠 Back to Menu', callback_data: 'start' }],
 					],
 				};
 
@@ -606,7 +631,10 @@ Please try again or contact support if the issue persists.`;
 			}
 		} catch (error) {
 			console.error('Error confirming item purchase:', error);
-			await this.bot.sendMessage(chatId, '❌ Error processing purchase. Please try again.');
+			await this.bot.sendMessage(
+				chatId,
+				'❌ Error processing purchase. Please try again.'
+			);
 		}
 	}
 
@@ -652,7 +680,10 @@ Ready to confirm your purchase?
 			});
 		} catch (error) {
 			console.error('Error showing item preview:', error);
-			await this.bot.sendMessage(chatId, '❌ Error loading preview. Please try again.');
+			await this.bot.sendMessage(
+				chatId,
+				'❌ Error loading preview. Please try again.'
+			);
 		}
 	}
 
@@ -666,10 +697,10 @@ Ready to confirm your purchase?
 			}
 
 			const statusEmoji: Record<string, string> = {
-				'pending': '⏳',
-				'confirmed': '✅',
-				'cancelled': '❌',
-				'delivered': '📦'
+				pending: '⏳',
+				confirmed: '✅',
+				cancelled: '❌',
+				delivered: '📦',
 			};
 
 			const message = `
@@ -685,21 +716,26 @@ Ready to confirm your purchase?
 ${order.status === 'confirmed' ? '📦 Your order is being prepared for delivery!' : ''}
 ${order.status === 'delivered' ? '🎉 Your order has been delivered!' : ''}
 
-🔗 **Order Link:** ${process.env.FRONTEND_URL || 'https://shoq.me'}/order/${order.orderId}
+🔗 **Order Link:** ${process.env.FRONTEND_URL || 'http://localhost:3000'}/order/${order.orderId}
 			`;
 
 			const keyboard = {
 				inline_keyboard: [
-					...(order.status === 'confirmed' || order.status === 'pending' ? [[
-						{ text: '❌ Cancel Order', callback_data: `cancel_order_${orderId}` },
-					]] : []),
+					...(order.status === 'confirmed' || order.status === 'pending'
+						? [
+								[
+									{
+										text: '❌ Cancel Order',
+										callback_data: `cancel_order_${orderId}`,
+									},
+								],
+							]
+						: []),
 					[
 						{ text: '🛍️ Shop More', callback_data: 'shop' },
 						{ text: '💳 Check Balance', callback_data: 'balance' },
 					],
-					[
-						{ text: '🏠 Back to Menu', callback_data: 'start' },
-					],
+					[{ text: '🏠 Back to Menu', callback_data: 'start' }],
 				],
 			};
 
@@ -709,7 +745,10 @@ ${order.status === 'delivered' ? '🎉 Your order has been delivered!' : ''}
 			});
 		} catch (error) {
 			console.error('Error viewing order:', error);
-			await this.bot.sendMessage(chatId, '❌ Error loading order details. Please try again.');
+			await this.bot.sendMessage(
+				chatId,
+				'❌ Error loading order details. Please try again.'
+			);
 		}
 	}
 
@@ -729,9 +768,7 @@ ${order.status === 'delivered' ? '🎉 Your order has been delivered!' : ''}
 							{ text: '🛍️ Continue Shopping', callback_data: 'shop' },
 							{ text: '💳 Check Balance', callback_data: 'balance' },
 						],
-						[
-							{ text: '🏠 Back to Menu', callback_data: 'start' },
-						],
+						[{ text: '🏠 Back to Menu', callback_data: 'start' }],
 					],
 				};
 
@@ -744,7 +781,10 @@ ${order.status === 'delivered' ? '🎉 Your order has been delivered!' : ''}
 			}
 		} catch (error) {
 			console.error('Error cancelling order:', error);
-			await this.bot.sendMessage(chatId, '❌ Error cancelling order. Please try again.');
+			await this.bot.sendMessage(
+				chatId,
+				'❌ Error cancelling order. Please try again.'
+			);
 		}
 	}
 
@@ -771,12 +811,12 @@ ${order.status === 'delivered' ? '🎉 Your order has been delivered!' : ''}
 					const parts = callbackData.split('_');
 					const itemId = parts[2];
 					const quantity = parts[3] || '1';
-					
+
 					console.log('🔘 === CONFIRM PURCHASE DEBUG ===');
 					console.log('🔘 Callback Data:', callbackData);
 					console.log('🔘 Parts:', parts);
 					console.log('🔘 ItemId:', itemId, 'Quantity:', quantity);
-					
+
 					const purchaseResponse = await this.actionHandler.executeAction(
 						{
 							action: 'CONFIRM_PURCHASE',
@@ -785,26 +825,32 @@ ${order.status === 'delivered' ? '🎉 Your order has been delivered!' : ''}
 						},
 						chatId
 					);
-					
+
 					if (purchaseResponse.success && purchaseResponse.data?.uiActions) {
 						const keyboard = {
-							inline_keyboard: purchaseResponse.data.uiActions.map((uiAction: any) => [
-								{
-									text: uiAction.text,
-									callback_data: `ui_${uiAction.action}_${uiAction.orderId || uiAction.category || 'default'}`,
-								},
-							]),
+							inline_keyboard: purchaseResponse.data.uiActions.map(
+								(uiAction: any) => [
+									{
+										text: uiAction.text,
+										callback_data: `ui_${uiAction.action}_${uiAction.orderId || uiAction.category || 'default'}`,
+									},
+								]
+							),
 						};
-						
+
 						// Check if we have item details with an image for the confirmation
 						if (purchaseResponse.data?.itemDetails?.imageUrl) {
 							try {
 								// Send photo with caption and buttons
-								await this.bot.sendPhoto(chatId, purchaseResponse.data.itemDetails.imageUrl, {
-									caption: purchaseResponse.message,
-									parse_mode: 'Markdown',
-									reply_markup: keyboard,
-								});
+								await this.bot.sendPhoto(
+									chatId,
+									purchaseResponse.data.itemDetails.imageUrl,
+									{
+										caption: purchaseResponse.message,
+										parse_mode: 'Markdown',
+										reply_markup: keyboard,
+									}
+								);
 							} catch (imageError) {
 								console.error('Error sending confirmation image:', imageError);
 								// Fallback to text message if image fails
@@ -830,7 +876,7 @@ ${order.status === 'delivered' ? '🎉 Your order has been delivered!' : ''}
 					const bookingParts = callbackData.split('_');
 					const ticketId = bookingParts[2];
 					const ticketQuantity = bookingParts[3] || '1';
-					
+
 					const bookingResponse = await this.actionHandler.executeAction(
 						{
 							action: 'CONFIRM_BOOKING',
@@ -839,15 +885,17 @@ ${order.status === 'delivered' ? '🎉 Your order has been delivered!' : ''}
 						},
 						chatId
 					);
-					
+
 					if (bookingResponse.success && bookingResponse.data?.uiActions) {
 						const keyboard = {
-							inline_keyboard: bookingResponse.data.uiActions.map((uiAction: any) => [
-								{
-									text: uiAction.text,
-									callback_data: `ui_${uiAction.action}_${uiAction.orderId || 'default'}`,
-								},
-							]),
+							inline_keyboard: bookingResponse.data.uiActions.map(
+								(uiAction: any) => [
+									{
+										text: uiAction.text,
+										callback_data: `ui_${uiAction.action}_${uiAction.orderId || 'default'}`,
+									},
+								]
+							),
 						};
 						await this.bot.sendMessage(chatId, bookingResponse.message, {
 							parse_mode: 'Markdown',
@@ -862,7 +910,10 @@ ${order.status === 'delivered' ? '🎉 Your order has been delivered!' : ''}
 
 				case 'cancel_purchase':
 				case 'cancel_booking':
-					await this.bot.sendMessage(chatId, '❌ Purchase cancelled. What else can I help you with?');
+					await this.bot.sendMessage(
+						chatId,
+						'❌ Purchase cancelled. What else can I help you with?'
+					);
 					break;
 
 				case 'deposit':
@@ -899,7 +950,10 @@ ${order.status === 'delivered' ? '🎉 Your order has been delivered!' : ''}
 			}
 		} catch (error) {
 			console.error('Error in handleUIAction:', error);
-			await this.bot.sendMessage(chatId, '❌ Error processing your request. Please try again.');
+			await this.bot.sendMessage(
+				chatId,
+				'❌ Error processing your request. Please try again.'
+			);
 		}
 	}
 
@@ -946,10 +1000,14 @@ Just type naturally and I'll understand what you need!`;
 		const chatId = msg.chat.id;
 		const context = this.conversationContext.get(chatId);
 
-		if (!context || !context.conversationHistory || context.conversationHistory.length === 0) {
+		if (
+			!context ||
+			!context.conversationHistory ||
+			context.conversationHistory.length === 0
+		) {
 			await this.bot.sendMessage(
 				chatId,
-				"📝 No conversation history found. Start chatting to build your history!"
+				'📝 No conversation history found. Start chatting to build your history!'
 			);
 			return;
 		}
@@ -962,9 +1020,10 @@ Just type naturally and I'll understand what you need!`;
 			historyMessage += `👤 **You:** ${entry.userMessage}\n`;
 			if (entry.botResponse) {
 				// Truncate long responses
-				const response = entry.botResponse.length > 100 
-					? entry.botResponse.substring(0, 100) + '...' 
-					: entry.botResponse;
+				const response =
+					entry.botResponse.length > 100
+						? entry.botResponse.substring(0, 100) + '...'
+						: entry.botResponse;
 				historyMessage += `🤖 **Shoq:** ${response.replace(/\*/g, '')}\n\n`;
 			} else {
 				historyMessage += `🤖 **Shoq:** *(Processing...)*\n\n`;
@@ -985,7 +1044,10 @@ Just type naturally and I'll understand what you need!`;
 			// Get user info
 			const user = await User.findOne({ chatId });
 			if (!user) {
-				await this.bot.sendMessage(chatId, '❌ User not found. Please use /start to register.');
+				await this.bot.sendMessage(
+					chatId,
+					'❌ User not found. Please use /start to register.'
+				);
 				return;
 			}
 
@@ -1002,10 +1064,10 @@ Just type naturally and I'll understand what you need!`;
 			}
 
 			const statusEmoji: Record<string, string> = {
-				'pending': '⏳',
-				'confirmed': '✅',
-				'cancelled': '❌',
-				'delivered': '📦'
+				pending: '⏳',
+				confirmed: '✅',
+				cancelled: '❌',
+				delivered: '📦',
 			};
 
 			let summaryMessage = `📋 **Order Summary**\n\n💰 **Current Balance:** $${user.balance}\n👤 **Member Since:** ${user.registeredAt.toLocaleDateString()}\n\n📦 **Recent Orders (Last ${orders.length}):**\n\n`;
@@ -1028,9 +1090,7 @@ Just type naturally and I'll understand what you need!`;
 						{ text: '🛍️ Continue Shopping', callback_data: 'shop' },
 						{ text: '💰 Check Balance', callback_data: 'balance' },
 					],
-					[
-						{ text: '📝 Conversation History', callback_data: 'chat_history' },
-					],
+					[{ text: '📝 Conversation History', callback_data: 'chat_history' }],
 				],
 			};
 
@@ -1038,10 +1098,12 @@ Just type naturally and I'll understand what you need!`;
 				parse_mode: 'Markdown',
 				reply_markup: keyboard,
 			});
-
 		} catch (error) {
 			console.error('Error in handleOrderSummary:', error);
-			await this.bot.sendMessage(chatId, '❌ Error loading order summary. Please try again.');
+			await this.bot.sendMessage(
+				chatId,
+				'❌ Error loading order summary. Please try again.'
+			);
 		}
 	}
 
@@ -1052,9 +1114,7 @@ Just type naturally and I'll understand what you need!`;
 To start using Shoq, please deposit USDC to our AI Wallet:
 
 **Wallet Address:** 
-\`0xABC123DEF456789...\` (Copy this address)
-
-**Minimum Deposit:** 100 USDC
+${process.env.AI_WALLET_ADDRESS}
 
 **Steps:**
 1. Send USDC from your wallet to the address above
@@ -1080,9 +1140,12 @@ To start using Shoq, please deposit USDC to our AI Wallet:
 	private async handleBalance(chatId: number) {
 		try {
 			const user = await User.findOne({ chatId });
-			
+
 			if (!user) {
-				await this.bot.sendMessage(chatId, '❌ User not found. Please use /start to register.');
+				await this.bot.sendMessage(
+					chatId,
+					'❌ User not found. Please use /start to register.'
+				);
 				return;
 			}
 
@@ -1112,7 +1175,10 @@ ${user.balance === 0 ? '💡 **Tip:** Make a deposit to start shopping!' : '🎉
 			});
 		} catch (error) {
 			console.error('Error in handleBalance:', error);
-			await this.bot.sendMessage(chatId, '❌ Error retrieving balance. Please try again.');
+			await this.bot.sendMessage(
+				chatId,
+				'❌ Error retrieving balance. Please try again.'
+			);
 		}
 	}
 
@@ -1139,7 +1205,10 @@ Type your transaction hash below:
 		});
 	}
 
-	private async handleTransactionHashSubmission(chatId: number, txHash: string) {
+	private async handleTransactionHashSubmission(
+		chatId: number,
+		txHash: string
+	) {
 		try {
 			const pendingDeposit = this.pendingDeposits.get(chatId);
 			if (!pendingDeposit || pendingDeposit.step !== 'waiting_tx_hash') {
@@ -1147,9 +1216,9 @@ Type your transaction hash below:
 			}
 
 			// Store tx hash and ask for wallet address
-			this.pendingDeposits.set(chatId, { 
-				step: 'waiting_wallet_address', 
-				data: { txHash: txHash.trim() } 
+			this.pendingDeposits.set(chatId, {
+				step: 'waiting_wallet_address',
+				data: { txHash: txHash.trim() },
 			});
 
 			const message = `
@@ -1171,19 +1240,28 @@ This helps us verify that you own the transaction.
 			return true;
 		} catch (error) {
 			console.error('Error handling transaction hash:', error);
-			await this.bot.sendMessage(chatId, '❌ Error processing transaction hash. Please try again.');
+			await this.bot.sendMessage(
+				chatId,
+				'❌ Error processing transaction hash. Please try again.'
+			);
 			return false;
 		}
 	}
 
-	private async handleWalletAddressSubmission(chatId: number, walletAddress: string) {
+	private async handleWalletAddressSubmission(
+		chatId: number,
+		walletAddress: string
+	) {
 		try {
 			const pendingDeposit = this.pendingDeposits.get(chatId);
 			if (!pendingDeposit || pendingDeposit.step !== 'waiting_wallet_address') {
 				return false;
 			}
 
-			await this.bot.sendMessage(chatId, '🔍 **Verifying your deposit...** This may take a moment.');
+			await this.bot.sendMessage(
+				chatId,
+				'🔍 Verifying your deposit...\nThis may take a moment.'
+			);
 
 			// Verify the deposit
 			const result = await depositService.verifyDeposit({
@@ -1243,7 +1321,10 @@ Please check your transaction details and try again.`;
 		} catch (error) {
 			console.error('Error handling wallet address:', error);
 			this.pendingDeposits.delete(chatId);
-			await this.bot.sendMessage(chatId, '❌ Error processing wallet address. Please try again.');
+			await this.bot.sendMessage(
+				chatId,
+				'❌ Error processing wallet address. Please try again.'
+			);
 			return false;
 		}
 	}
@@ -1316,7 +1397,10 @@ Please check your transaction details and try again.`;
 		const pendingDeposit = this.pendingDeposits.get(chatId);
 		if (pendingDeposit) {
 			if (pendingDeposit.step === 'waiting_tx_hash') {
-				const handled = await this.handleTransactionHashSubmission(chatId, text);
+				const handled = await this.handleTransactionHashSubmission(
+					chatId,
+					text
+				);
 				if (handled) return;
 			} else if (pendingDeposit.step === 'waiting_wallet_address') {
 				const handled = await this.handleWalletAddressSubmission(chatId, text);
@@ -1523,11 +1607,15 @@ Please check your transaction details and try again.`;
 						if (actionResult.data?.itemDetails?.imageUrl) {
 							try {
 								// Send photo with caption and buttons
-								await this.bot.sendPhoto(chatId, actionResult.data.itemDetails.imageUrl, {
-									caption: actionResult.message,
-									parse_mode: 'Markdown',
-									reply_markup: keyboard,
-								});
+								await this.bot.sendPhoto(
+									chatId,
+									actionResult.data.itemDetails.imageUrl,
+									{
+										caption: actionResult.message,
+										parse_mode: 'Markdown',
+										reply_markup: keyboard,
+									}
+								);
 							} catch (imageError) {
 								console.error('Error sending image:', imageError);
 								// Fallback to text message if image fails
@@ -1548,10 +1636,14 @@ Please check your transaction details and try again.`;
 						if (actionResult.data?.itemDetails?.imageUrl) {
 							try {
 								// Send photo with caption
-								await this.bot.sendPhoto(chatId, actionResult.data.itemDetails.imageUrl, {
-									caption: actionResult.message,
-									parse_mode: 'Markdown',
-								});
+								await this.bot.sendPhoto(
+									chatId,
+									actionResult.data.itemDetails.imageUrl,
+									{
+										caption: actionResult.message,
+										parse_mode: 'Markdown',
+									}
+								);
 							} catch (imageError) {
 								console.error('Error sending image:', imageError);
 								// Fallback to text message if image fails
@@ -1570,7 +1662,9 @@ Please check your transaction details and try again.`;
 					// Add bot response to conversation history
 					const context = this.conversationContext.get(chatId);
 					if (context && context.conversationHistory.length > 0) {
-						context.conversationHistory[context.conversationHistory.length - 1].botResponse = actionResult.message;
+						context.conversationHistory[
+							context.conversationHistory.length - 1
+						].botResponse = actionResult.message;
 					}
 
 					// Only show follow-up options if they ask for more
@@ -1599,7 +1693,9 @@ Please check your transaction details and try again.`;
 				// Add bot response to conversation history
 				const context = this.conversationContext.get(chatId);
 				if (context && context.conversationHistory.length > 0) {
-					context.conversationHistory[context.conversationHistory.length - 1].botResponse = geminiResponse.message;
+					context.conversationHistory[
+						context.conversationHistory.length - 1
+					].botResponse = geminiResponse.message;
 				}
 
 				await this.bot.sendMessage(chatId, geminiResponse.message, {

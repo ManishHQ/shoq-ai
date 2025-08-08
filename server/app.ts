@@ -18,6 +18,8 @@ import debugRoutes from './routes/debug.route.js';
 import usdcRoutes from './routes/usdc.route.js';
 import tokenRoutes from './routes/token.route.js';
 import chatRoutes from './routes/chat.route.js';
+import purchaseRoutes from './routes/purchase.route.js';
+import depositRoutes from './routes/deposit.route.js';
 
 // init app
 const app = express();
@@ -66,6 +68,8 @@ app.use('/debug', debugRoutes);
 app.use('/usdc', usdcRoutes);
 app.use('/token', tokenRoutes);
 app.use('/chat', chatRoutes);
+app.use('/purchase', purchaseRoutes);
+app.use('/deposits', depositRoutes);
 
 // test route
 app.use('/test', (req: Request, res: Response) => {

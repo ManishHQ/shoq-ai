@@ -112,12 +112,41 @@ const Footer = () => {
 					<div className='flex flex-col sm:flex-row gap-4 max-w-md mx-auto'>
 						<input
 							type='email'
+							id='newsletter-email'
 							placeholder={FOOTER_CONFIG.newsletter.placeholder}
 							className='flex-1 bg-slate-700 text-white px-4 py-3 rounded-xl border border-slate-600 focus:border-purple-400 focus:outline-none'
+							onKeyDown={(e) => {
+								if (e.key === 'Enter') {
+									const button = document.querySelector('#newsletter-button') as HTMLButtonElement;
+									button?.click();
+								}
+							}}
 						/>
 						<motion.button
+							id='newsletter-button'
 							whileHover={{ scale: 1.05 }}
 							whileTap={{ scale: 0.95 }}
+							onClick={() => {
+								const emailInput = document.getElementById('newsletter-email') as HTMLInputElement;
+								const email = emailInput?.value?.trim();
+								
+								if (!email) {
+									alert('Please enter your email address');
+									emailInput?.focus();
+									return;
+								}
+								
+								if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+									alert('Please enter a valid email address');
+									emailInput?.focus();
+									return;
+								}
+								
+								// Here you would typically send to your newsletter API
+								// For now, we'll simulate success
+								alert(`🎉 Thank you! We've added ${email} to our waitlist. You'll be notified when Shoq launches!`);
+								emailInput.value = '';
+							}}
 							className='bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-6 py-3 rounded-xl font-medium hover:shadow-lg transition-all duration-300'
 						>
 							{FOOTER_CONFIG.newsletter.buttonText}

@@ -1,11 +1,14 @@
 import Deposit from '../models/deposit.model.js';
 import User from '../models/user.model.js';
 import { usdcService } from './usdcService.js';
+import { hederaVerificationService } from './hederaVerificationService.js';
 
 export interface DepositVerificationRequest {
-	chatId: number;
+	chatId?: number;
+	walletAddress?: string;
+	email?: string;
 	txHash: string;
-	walletAddress: string;
+	expectedAmount?: number; // Optional - for additional validation
 }
 
 export interface DepositVerificationResult {
@@ -16,47 +19,82 @@ export interface DepositVerificationResult {
 }
 
 class DepositService {
-	private readonly AI_WALLET_ADDRESS = process.env.AI_WALLET_ADDRESS || '0xABC123DEF456789...';
-	private readonly MIN_DEPOSIT_AMOUNT = 100; // 100 USDC minimum
+	private readonly SHOQ_TREASURY_ACCOUNT = process.env.SHOQ_TREASURY_ACCOUNT || '0.0.654321';
+	private readonly MIN_DEPOSIT_AMOUNT = 1; // 1 USDC minimum for Hedera testnet
 
 	/**
-	 * Verify a deposit transaction
+	 * Verify a deposit transaction on Hedera blockchain
 	 */
 	async verifyDeposit(request: DepositVerificationRequest): Promise<DepositVerificationResult> {
 		try {
+			// Validate request
+			if (!request.txHash) {
+				return {
+					success: false,
+					message: '❌ Transaction hash is required.',
+					error: 'Missing transaction hash'
+				};
+			}
+
 			// Check if transaction hash already exists
 			const existingDeposit = await Deposit.findOne({ txHash: request.txHash });
 			if (existingDeposit) {
 				return {
 					success: false,
-					message: '❌ This transaction hash has already been used.',
+					message: '❌ This transaction has already been processed.',
 					error: 'Duplicate transaction hash'
 				};
 			}
 
-			// Get user
-			const user = await User.findOne({ chatId: request.chatId });
+			// Find user by available identifier
+			const user = await this.findUserByIdentifier(request);
 			if (!user) {
 				return {
 					success: false,
-					message: '❌ User not found. Please use /start to register.',
+					message: '❌ User not found. Please ensure you have an account with us.',
 					error: 'User not found'
 				};
 			}
 
-			// For now, we'll simulate transaction verification
-			// In production, you would verify the transaction on-chain
-			const isValidTransaction = await this.simulateTransactionVerification(
-				request.txHash,
-				request.walletAddress,
-				this.AI_WALLET_ADDRESS
-			);
+			// Verify transaction on Hedera blockchain
+			console.log('🔍 Verifying transaction on Hedera:', request.txHash);
+			const verification = await hederaVerificationService.verifyTransaction(request.txHash);
 
-			if (!isValidTransaction.success) {
+			if (!verification.isValid) {
 				return {
 					success: false,
-					message: isValidTransaction.message,
-					error: isValidTransaction.error
+					message: `❌ Transaction verification failed: ${verification.error}`,
+					error: verification.error
+				};
+			}
+
+			// Additional amount validation if expected amount is provided
+			if (request.expectedAmount && verification.amount) {
+				const tolerance = 0.01; // Allow 0.01 USDC tolerance
+				if (Math.abs(verification.amount - request.expectedAmount) > tolerance) {
+					return {
+						success: false,
+						message: `❌ Amount mismatch. Expected: ${request.expectedAmount} USDC, Found: ${verification.amount} USDC`,
+						error: 'Amount mismatch'
+					};
+				}
+			}
+
+			// Check minimum deposit amount
+			if (verification.amount! < this.MIN_DEPOSIT_AMOUNT) {
+				return {
+					success: false,
+					message: `❌ Minimum deposit amount is ${this.MIN_DEPOSIT_AMOUNT} USDC. Found: ${verification.amount} USDC`,
+					error: 'Below minimum deposit'
+				};
+			}
+
+			// Check if transaction is recent (within 24 hours)
+			if (verification.timestamp && !hederaVerificationService.isTransactionRecent(verification.timestamp)) {
+				return {
+					success: false,
+					message: '❌ Transaction is too old. Please use a transaction from the last 24 hours.',
+					error: 'Transaction too old'
 				};
 			}
 
@@ -64,67 +102,77 @@ class DepositService {
 			const deposit = new Deposit({
 				userId: user._id,
 				txHash: request.txHash,
-				amount: isValidTransaction.amount,
+				amount: verification.amount!,
 				confirmed: true,
-				walletAddress: request.walletAddress,
+				walletAddress: verification.sender || 'unknown',
 			});
 
 			await deposit.save();
 
 			// Update user balance
-			user.balance += isValidTransaction.amount!;
+			user.balance += verification.amount!;
 			await user.save();
+
+			// Log successful verification
+			console.log('✅ Deposit verified and processed:', {
+				userId: user._id,
+				txHash: request.txHash,
+				amount: verification.amount,
+				userBalance: user.balance
+			});
 
 			return {
 				success: true,
-				message: `✅ Deposit confirmed! Added $${isValidTransaction.amount} USDC to your balance.`,
-				deposit: deposit
+				message: `✅ Deposit verified! Added ${verification.amount} USDC to your balance.\n\n` +
+						`Transaction: ${request.txHash}\n` +
+						`Amount: ${verification.amount} USDC\n` +
+						`New Balance: ${user.balance.toFixed(2)} USDC\n` +
+						`Verified on: ${verification.timestamp ? new Date(parseFloat(verification.timestamp) * 1000).toLocaleString() : 'Unknown'}`,
+				deposit: {
+					id: deposit._id,
+					txHash: deposit.txHash,
+					amount: deposit.amount,
+					confirmed: deposit.confirmed,
+					createdAt: deposit.createdAt,
+					blockchain: {
+						network: hederaVerificationService.getNetworkInfo().network,
+						tokenId: verification.tokenId,
+						sender: verification.sender,
+						receiver: verification.receiver,
+						timestamp: verification.timestamp
+					}
+				}
 			};
 
 		} catch (error) {
 			console.error('Error verifying deposit:', error);
 			return {
 				success: false,
-				message: '❌ Error processing deposit. Please try again.',
+				message: '❌ Error processing deposit. Please try again or contact support.',
 				error: error instanceof Error ? error.message : 'Unknown error'
 			};
 		}
 	}
 
 	/**
-	 * Simulate transaction verification (replace with real on-chain verification)
+	 * Find user by available identifier
 	 */
-	private async simulateTransactionVerification(
-		txHash: string,
-		fromAddress: string,
-		toAddress: string
-	): Promise<{ success: boolean; amount?: number; message: string; error?: string }> {
-		// Simulate basic validation
-		if (txHash.length < 10) {
-			return {
-				success: false,
-				message: '❌ Invalid transaction hash format.',
-				error: 'Invalid tx hash format'
-			};
+	private async findUserByIdentifier(request: DepositVerificationRequest): Promise<any | null> {
+		if (request.chatId) {
+			return await User.findOne({ chatId: request.chatId });
 		}
-
-		// Simulate checking if transaction exists and is valid
-		// In production, you would:
-		// 1. Query the blockchain for the transaction
-		// 2. Verify sender address matches walletAddress
-		// 3. Verify receiver address matches AI_WALLET_ADDRESS
-		// 4. Verify token type is USDC
-		// 5. Get the actual transfer amount
 		
-		// For demo purposes, simulate a successful transaction
-		const randomAmount = Math.floor(Math.random() * 500) + this.MIN_DEPOSIT_AMOUNT;
+		if (request.walletAddress) {
+			return await User.findOne({ walletAddress: request.walletAddress });
+		}
 		
-		return {
-			success: true,
-			amount: randomAmount,
-			message: 'Transaction verified successfully'
-		};
+		if (request.email) {
+			return await User.findOne({ email: request.email });
+		}
+		
+		return null;
 	}
+
 
 	/**
 	 * Get deposit history for a user
