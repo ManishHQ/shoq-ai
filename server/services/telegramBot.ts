@@ -1743,11 +1743,28 @@ Please check your transaction details and try again.`;
 		console.log('🧠 Context:', JSON.stringify(context, null, 2));
 		console.log('🧠 Conversation Count:', context.conversationCount);
 
-		try {
-			// Show typing indicator
-			await this.bot.sendChatAction(chatId, 'typing');
+		// Start typing indicator
+		let typingInterval: NodeJS.Timeout | null = null;
+		const startTyping = () => {
+			this.bot.sendChatAction(chatId, 'typing');
+			// Keep typing indicator active every 4 seconds
+			typingInterval = setInterval(() => {
+				this.bot.sendChatAction(chatId, 'typing');
+			}, 4000);
+		};
 
-			// Add natural delay
+		const stopTyping = () => {
+			if (typingInterval) {
+				clearInterval(typingInterval);
+				typingInterval = null;
+			}
+		};
+
+		try {
+			// Start typing indicator
+			startTyping();
+
+			// Add natural delay for better UX
 			await new Promise((resolve) =>
 				setTimeout(resolve, 800 + Math.random() * 400)
 			);
@@ -2084,6 +2101,9 @@ Please check your transaction details and try again.`;
 					"That's interesting! 😊 I'm here to help with tickets and shopping. You can ask me about events, products, prices, or just chat! What would you like to explore?"
 				);
 			}
+		} finally {
+			// Stop typing indicator
+			stopTyping();
 		}
 	}
 

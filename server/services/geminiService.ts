@@ -27,7 +27,7 @@ class GeminiService {
 		console.log('🤖 Gemini AI Service initialized');
 	}
 
-	private getSystemPrompt(userContext?: any): string {
+	private async getSystemPrompt(userContext?: any): Promise<string> {
 		const userInfo = userContext
 			? `
 USER CONTEXT:
@@ -37,6 +37,27 @@ USER CONTEXT:
 - Onboarding Method: ${userContext.onboardingMethod || 'Unknown'}
 `
 			: '';
+
+		// Dynamically fetch products from database
+		let availableShopItems = '';
+		try {
+			const productService = (await import('./productService.js')).default;
+			const result = await productService.getAvailableProducts();
+
+			if (result.success && result.products && result.products.length > 0) {
+				availableShopItems = result.products
+					.map(
+						(item: any) =>
+							`- ${item.name} ($${item.price}, ${item.category})${!item.inStock ? ' - Out of stock' : ''}`
+					)
+					.join('\n');
+			} else {
+				availableShopItems = 'No items currently available';
+			}
+		} catch (error) {
+			console.error('Error fetching products for AI prompt:', error);
+			availableShopItems = 'Error loading products';
+		}
 
 		return `You are Shoq, a friendly and enthusiastic AI assistant for a platform that sells tickets and shop items. 
 
@@ -68,16 +89,7 @@ AVAILABLE TICKETS:
 - Opera - La Traviata ($75)
 
 AVAILABLE SHOP ITEMS:
-- T-Shirt ($20, Clothing)
-- Coffee Mug ($8, Home)
-- Phone Case ($15, Electronics)
-- Book - Programming Guide ($25, Books) - Not available
-- Headphones ($80, Electronics)
-- Laptop Stand ($35, Electronics)
-- Water Bottle ($12, Home)
-- Notebook ($5, Office)
-- Wireless Mouse ($25, Electronics)
-- Desk Lamp ($45, Home)
+${availableShopItems}
 
 CONVERSATION STYLE:
 - If someone asks about items, be excited to show them
@@ -128,7 +140,7 @@ Response: "👋 Hey there! I'm Shoq, your friendly shopping and ticket assistant
 
 		for (let attempt = 1; attempt <= maxRetries; attempt++) {
 			try {
-				const prompt = `${this.getSystemPrompt(userContext)}
+				const prompt = `${await this.getSystemPrompt(userContext)}
 
 USER MESSAGE: "${userMessage}"
 
@@ -262,7 +274,7 @@ Please analyze the user's intent and respond appropriately. If they want to perf
 
 	public async getRecommendations(userPreferences: string): Promise<string> {
 		try {
-			const prompt = `${this.getSystemPrompt()}
+			const prompt = `${await this.getSystemPrompt()}
 
 USER PREFERENCES: "${userPreferences}"
 

@@ -41,6 +41,8 @@ export default function ItemsList({
 		}
 	};
 
+	console.log(products);
+
 	if (loading) {
 		return (
 			<div className='p-6'>

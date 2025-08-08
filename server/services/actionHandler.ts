@@ -254,8 +254,7 @@ ${canAfford ? 'Ready to confirm your booking?' : 'Please make a deposit to book 
 		}
 
 		const totalPrice = foundItem.price * quantity;
-		const shippingCost = totalPrice > 50 ? 0 : 5;
-		const finalTotal = totalPrice + shippingCost;
+		const finalTotal = totalPrice;
 
 		// Check if user has sufficient balance
 		const canAfford = user.balance >= finalTotal;
@@ -267,7 +266,6 @@ ${canAfford ? 'Ready to confirm your booking?' : 'Please make a deposit to book 
 **${foundItem.name}**
 💰 Price: $${foundItem.price}
 📦 Quantity: ${quantity}
-🚚 Shipping: $${shippingCost}
 💳 **Total: $${finalTotal}**
 
 📂 Category: ${foundItem.category}
@@ -287,7 +285,6 @@ ${canAfford ? 'Ready to confirm your purchase?' : 'Please make a deposit to purc
 				item: foundItem.name,
 				quantity,
 				totalPrice,
-				shippingCost,
 				finalTotal,
 				userId,
 				canAfford,
@@ -298,7 +295,10 @@ ${canAfford ? 'Ready to confirm your purchase?' : 'Please make a deposit to purc
 					price: foundItem.price,
 					category: foundItem.category,
 					description: foundItem.description,
-					imageUrl: foundItem.imageUrl,
+					imageUrl:
+						foundItem.images && foundItem.images.length > 0
+							? foundItem.images[0]
+							: this.getDefaultImageForCategory(foundItem.category),
 					colors: foundItem.colors,
 					rating: foundItem.rating,
 					reviewCount: foundItem.reviewCount,
@@ -606,8 +606,7 @@ ${canAfford ? 'Ready to confirm your purchase?' : 'Please make a deposit to purc
 		const { orderService } = await import('./orderService.js');
 
 		const totalPrice = foundItem.price * quantity;
-		const shippingCost = totalPrice > 50 ? 0 : 5;
-		const finalTotal = totalPrice + shippingCost;
+		const finalTotal = totalPrice;
 
 		// Create actual order in database
 		const orderResult = await orderService.createOrder({
@@ -626,13 +625,12 @@ ${canAfford ? 'Ready to confirm your purchase?' : 'Please make a deposit to purc
 
 		return {
 			success: true,
-			message: `🎉 Woo-hoo! Your order is confirmed!\n\n✅ ${quantity}x "${foundItem.name}"\n💰 Total: $${finalTotal} (including $${shippingCost} shipping)\n🛍️ Order ID: #${orderResult.order.orderId}\n💳 Transaction Hash: ${orderResult.transactionHash}\n\nThanks for shopping with us! 🛍️`,
+			message: `🎉 Woo-hoo! Your order is confirmed!\n\n✅ ${quantity}x "${foundItem.name}"\n💰 Total: $${finalTotal}\n🛍️ Order ID: #${orderResult.order.orderId}\n💳 Transaction Hash: ${orderResult.transactionHash}\n\nThanks for shopping with us! 🛍️`,
 			data: {
 				orderId: orderResult.order.orderId,
 				item: foundItem.name,
 				quantity,
 				totalPrice,
-				shippingCost,
 				finalTotal,
 				userId,
 				transactionHash: orderResult.transactionHash,
@@ -735,6 +733,61 @@ ${canAfford ? 'Ready to confirm your purchase?' : 'Please make a deposit to purc
 				],
 			},
 		};
+	}
+
+	private getDefaultImageForCategory(category: string): string {
+		switch (category.toLowerCase()) {
+			case 'electronics':
+				return 'https://images.unsplash.com/photo-1498049794561-7780e7231661?w=400&h=300&fit=crop';
+			case 'home':
+				return 'https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=400&h=300&fit=crop';
+			case 'clothing':
+				return 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=400&h=300&fit=crop';
+			case 'books':
+				return 'https://images.unsplash.com/photo-1481627834876-b7833e8f5570?w=400&h=300&fit=crop';
+			case 'grocery':
+				return 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=400&h=300&fit=crop';
+			case 'food':
+				return 'https://images.unsplash.com/photo-1504674900244-1b47f22f8f54?w=400&h=300&fit=crop';
+			case 'drinks':
+				return 'https://images.unsplash.com/photo-1556679343-c7306c1976bc?w=400&h=300&fit=crop';
+			case 'toys':
+				return 'https://images.unsplash.com/photo-1566576912321-d58ddd7a6088?w=400&h=300&fit=crop';
+			case 'sports':
+				return 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=400&h=300&fit=crop';
+			case 'automotive':
+				return 'https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?w=400&h=300&fit=crop';
+			case 'pets':
+				return 'https://images.unsplash.com/photo-1450778869180-41d0601e046e?w=400&h=300&fit=crop';
+			case 'office':
+				return 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=400&h=300&fit=crop';
+			case 'garden':
+				return 'https://images.unsplash.com/photo-1416879595882-3373a0480b5b?w=400&h=300&fit=crop';
+			case 'tools':
+				return 'https://images.unsplash.com/photo-1581147036324-c1c89c2c8b5c?w=400&h=300&fit=crop';
+			case 'jewelry':
+				return 'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?w=400&h=300&fit=crop';
+			case 'beauty':
+				return 'https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?w=400&h=300&fit=crop';
+			case 'health':
+				return 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1f?w=400&h=300&fit=crop';
+			case 'music':
+				return 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=400&h=300&fit=crop';
+			case 'movies':
+				return 'https://images.unsplash.com/photo-1489599835382-957593cb2371?w=400&h=300&fit=crop';
+			case 'travel':
+				return 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400&h=300&fit=crop';
+			case 'education':
+				return 'https://images.unsplash.com/photo-1523050854058-8df90110c9e1?w=400&h=300&fit=crop';
+			case 'finance':
+				return 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?w=400&h=300&fit=crop';
+			case 'gaming':
+				return 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=400&h=300&fit=crop';
+			case 'entertainment':
+				return 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=400&h=300&fit=crop';
+			default:
+				return 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=400&h=300&fit=crop';
+		}
 	}
 }
 
