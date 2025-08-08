@@ -859,7 +859,25 @@ Ready to confirm your purchase?
 	}
 
 	private async handleViewOrder(chatId: number, orderId: string) {
+		// Start typing indicator for order loading
+		let typingInterval: NodeJS.Timeout | null = null;
+		const startTyping = () => {
+			this.bot.sendChatAction(chatId, 'typing');
+			typingInterval = setInterval(() => {
+				this.bot.sendChatAction(chatId, 'typing');
+			}, 4000);
+		};
+
+		const stopTyping = () => {
+			if (typingInterval) {
+				clearInterval(typingInterval);
+				typingInterval = null;
+			}
+		};
+
 		try {
+			startTyping();
+
 			// Try to get order by MongoDB _id first, then by orderId
 			let order = await orderService.getOrderById(orderId);
 			if (!order) {
@@ -925,6 +943,8 @@ ${order.status === 'delivered' ? '🎉 Your order has been delivered!' : ''}
 				chatId,
 				'❌ Error loading order details. Please try again.'
 			);
+		} finally {
+			stopTyping();
 		}
 	}
 
@@ -973,7 +993,25 @@ ${order.status === 'delivered' ? '🎉 Your order has been delivered!' : ''}
 		console.log('🔘 Action:', action);
 		console.log('🔘 Identifier:', identifier);
 
+		// Start typing indicator for UI actions
+		let typingInterval: NodeJS.Timeout | null = null;
+		const startTyping = () => {
+			this.bot.sendChatAction(chatId, 'typing');
+			typingInterval = setInterval(() => {
+				this.bot.sendChatAction(chatId, 'typing');
+			}, 4000);
+		};
+
+		const stopTyping = () => {
+			if (typingInterval) {
+				clearInterval(typingInterval);
+				typingInterval = null;
+			}
+		};
+
 		try {
+			startTyping();
+
 			// Handle compound actions like confirm_purchase
 			if (action === 'confirm' && identifier === 'purchase') {
 				const itemId = parts[3];
@@ -1136,6 +1174,47 @@ ${order.status === 'delivered' ? '🎉 Your order has been delivered!' : ''}
 					await this.showTickets(chatId);
 					break;
 
+				case 'start':
+					// Show main menu
+					const mainMenuMessage = `👋 Welcome to Shoq! 🎉
+
+I'm your friendly shopping and ticket assistant. What would you like to do today?
+
+🎫 **Book tickets** for movies, concerts, sports, and more
+🛍️ **Shop for items** like electronics, clothing, and groceries
+💰 **Check your balance** and make deposits
+💬 **Chat naturally** - just tell me what you need!`;
+
+					const mainMenuKeyboard = {
+						inline_keyboard: [
+							[
+								{ text: '🎫 Book Tickets', callback_data: 'browse_tickets' },
+								{ text: '🛍️ Shop Items', callback_data: 'browse_items' },
+							],
+							[
+								{ text: '💰 Check Balance', callback_data: 'balance' },
+								{ text: '💳 Make Deposit', callback_data: 'deposit' },
+							],
+							[{ text: '❓ Help', callback_data: 'help' }],
+						],
+					};
+
+					await this.bot.sendMessage(chatId, mainMenuMessage, {
+						parse_mode: 'Markdown',
+						reply_markup: mainMenuKeyboard,
+					});
+					break;
+
+				case 'help':
+					await this.handleHelp({
+						chat: { id: chatId },
+					} as TelegramBot.Message);
+					break;
+
+				case 'balance':
+					await this.handleBalance(chatId);
+					break;
+
 				default:
 					await this.bot.sendMessage(
 						chatId,
@@ -1148,6 +1227,9 @@ ${order.status === 'delivered' ? '🎉 Your order has been delivered!' : ''}
 				chatId,
 				'❌ Error processing your request. Please try again.'
 			);
+		} finally {
+			// Stop typing indicator
+			stopTyping();
 		}
 	}
 
@@ -1337,7 +1419,25 @@ ${process.env.OPERATOR_ADDRESS}
 	}
 
 	private async handleBalance(chatId: number) {
+		// Start typing indicator for balance retrieval
+		let typingInterval: NodeJS.Timeout | null = null;
+		const startTyping = () => {
+			this.bot.sendChatAction(chatId, 'typing');
+			typingInterval = setInterval(() => {
+				this.bot.sendChatAction(chatId, 'typing');
+			}, 4000);
+		};
+
+		const stopTyping = () => {
+			if (typingInterval) {
+				clearInterval(typingInterval);
+				typingInterval = null;
+			}
+		};
+
 		try {
+			startTyping();
+
 			const user = await User.findOne({ chatId });
 
 			if (!user) {
@@ -1378,6 +1478,8 @@ ${user.balance === 0 ? '💡 **Tip:** Make a deposit to start shopping!' : '🎉
 				chatId,
 				'❌ Error retrieving balance. Please try again.'
 			);
+		} finally {
+			stopTyping();
 		}
 	}
 
@@ -1931,6 +2033,10 @@ Please check your transaction details and try again.`;
 
 			// If there's an action to perform
 			if (geminiResponse.action) {
+				console.log('🤖 === EXECUTING ACTION ===');
+				console.log('🤖 Action:', geminiResponse.action.action);
+				console.log('🤖 Parameters:', geminiResponse.action.parameters);
+
 				this.loggingService.trackAction(
 					geminiResponse.action,
 					msg.from?.id || 0,
