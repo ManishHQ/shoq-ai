@@ -38,15 +38,15 @@ const userSchema = new mongoose.Schema<User>(
 		},
 		email: {
 			type: String,
-			required: function() {
+			required: function () {
 				return this.onboardingMethod !== 'telegram';
 			},
 			validate: {
-				validator: function(email: string) {
+				validator: function (email: string) {
 					return !email || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 				},
-				message: 'Please provide a valid email address'
-			}
+				message: 'Please provide a valid email address',
+			},
 		},
 		password: {
 			type: String,
@@ -61,7 +61,7 @@ const userSchema = new mongoose.Schema<User>(
 		},
 		chatId: {
 			type: Number,
-			required: function() {
+			required: function () {
 				return this.onboardingMethod === 'telegram';
 			},
 			unique: true,
@@ -70,18 +70,18 @@ const userSchema = new mongoose.Schema<User>(
 		},
 		walletAddress: {
 			type: String,
-			required: function() {
+			required: function () {
 				return this.onboardingMethod === 'wallet';
 			},
 			unique: true,
 			sparse: true,
 			index: true,
 			validate: {
-				validator: function(address: string) {
+				validator: function (address: string) {
 					return !address || /^0x[a-fA-F0-9]{40}$/.test(address);
 				},
-				message: 'Please provide a valid Ethereum wallet address'
-			}
+				message: 'Please provide a valid Ethereum wallet address',
+			},
 		},
 		balance: {
 			type: Number,
@@ -92,7 +92,7 @@ const userSchema = new mongoose.Schema<User>(
 			type: String,
 			enum: ['telegram', 'wallet', 'ai'],
 			required: true,
-			default: 'telegram'
+			default: 'telegram',
 		},
 		emailNotifications: {
 			type: Boolean,

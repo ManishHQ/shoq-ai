@@ -21,7 +21,7 @@ POST /purchase
 **Request Body:**
 ```json
 {
-  "walletAddress": "0x742e26f3F3C4F3b0D0f7B8F9C4F0D0F0C4F0D0F0", // optional
+  "walletAddress": "0.0.6494628", // optional (Hedera address format)
   "chatId": 123456789, // optional (for Telegram)
   "email": "user@example.com", // optional
   "name": "John Doe", // optional
@@ -119,7 +119,7 @@ POST /purchase/check-user
 **Request Body:**
 ```json
 {
-  "walletAddress": "0x742e26f3F3C4F3b0D0f7B8F9C4F0D0F0C4F0D0F0", // optional
+  "walletAddress": "0.0.6494628", // optional (Hedera address format)
   "chatId": 123456789, // optional
   "email": "user@example.com" // optional
 }
@@ -135,7 +135,7 @@ POST /purchase/check-user
       "id": "66b2a1c4f123456789012346",
       "name": "John Doe",
       "email": "user@example.com",
-      "walletAddress": "0x742e26f3F3C4F3b0D0f7B8F9C4F0D0F0C4F0D0F0",
+      "walletAddress": "0.0.6494628",
       "onboardingMethod": "wallet",
       "isVerified": true,
       "registeredAt": "2024-08-07T10:30:00.000Z"
@@ -249,7 +249,7 @@ console.log(result.isNewUser); // true if new user created
 ```javascript
 // Web app purchase for existing wallet user
 const purchaseData = {
-  walletAddress: "0x742e26f3F3C4F3b0D0f7B8F9C4F0D0F0C4F0D0F0",
+  walletAddress: "0.0.6494628",
   email: "john@example.com", // will update existing user if different
   
   items: [{
@@ -412,14 +412,13 @@ bot.on('message', async (msg) => {
 ```javascript
 // In your React/Next.js app
 const handlePurchase = async (orderData) => {
-  // Get wallet address from Web3 provider
-  const accounts = await window.ethereum.request({
-    method: 'eth_requestAccounts'
-  });
+  // Get wallet address from Hedera wallet provider
+  // Note: Use appropriate Hedera wallet integration instead of MetaMask
+  const hederaAccountId = await getHederaAccountId(); // Implement based on wallet provider
   
   const purchaseData = {
     ...orderData,
-    walletAddress: accounts[0],
+    walletAddress: hederaAccountId, // Hedera address format: 0.0.xxxxx
     source: 'webapp'
   };
   

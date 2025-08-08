@@ -261,12 +261,91 @@ router.post('/telegram', async (req, res) => {
 });
 
 /**
+ * Check user registration status for AI/Claude users
+ * POST /api/purchase/claude/check-user
+ */
+router.post('/claude/check-user', async (req, res) => {
+	try {
+		const { email, walletAddress } = req.body;
+
+		if (!email && !walletAddress) {
+			return res.status(400).json({
+				success: false,
+				message: 'Email or wallet address is required for user check',
+			});
+		}
+
+		// Try to find user
+		let user = null;
+		let identifierUsed = '';
+
+		if (email) {
+			const User = (await import('../models/user.model.js')).default;
+			user = await User.findOne({ email }).select('-password -otpCode');
+			identifierUsed = 'email';
+		}
+
+		if (!user && walletAddress) {
+			const User = (await import('../models/user.model.js')).default;
+			user = await User.findOne({ walletAddress }).select('-password -otpCode');
+			identifierUsed = 'wallet';
+		}
+
+		if (user) {
+			res.status(200).json({
+				success: true,
+				userExists: true,
+				requiresEmail: false,
+				data: {
+					user: {
+						id: user._id,
+						name: user.name,
+						email: user.email,
+						username: user.username,
+						walletAddress: user.walletAddress,
+						onboardingMethod: user.onboardingMethod,
+						isVerified: user.isVerified,
+						registeredAt: user.registeredAt,
+					},
+					identifierUsed,
+				},
+			});
+		} else {
+			res.status(200).json({
+				success: true,
+				userExists: false,
+				requiresEmail: !email,
+				message: email 
+					? 'User not found - will be created during purchase'
+					: 'Email required for user registration',
+			});
+		}
+	} catch (error) {
+		console.error('Claude user check API error:', error);
+		res.status(500).json({
+			success: false,
+			message: 'Internal server error during user check',
+			error: error instanceof Error ? error.message : 'Unknown error',
+		});
+	}
+});
+
+/**
  * Claude AI-specific purchase endpoint
  * POST /api/purchase/claude
  */
 router.post('/claude', async (req, res) => {
 	try {
 		const { email, name, ...orderData } = req.body;
+
+		// Validate email is provided for AI users
+		if (!email) {
+			return res.status(400).json({
+				success: false,
+				message: 'Email is required for AI/Claude purchases',
+				requiresEmail: true,
+			});
+		}
 
 		// Convert to standard purchase request
 		const purchaseRequest: PurchaseRequest = {

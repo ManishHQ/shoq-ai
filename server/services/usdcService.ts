@@ -33,7 +33,7 @@ export interface AccountBalance {
 
 class USDCService {
 	private client: Client | null = null;
-	private readonly defaultUSDCTokenId = '0.0.1234567'; // Replace with actual USDC testnet token ID or use createMockUSDC to create one
+	private readonly defaultUSDCTokenId = '0.0.6528760'; // Replace with actual USDC testnet token ID or use createMockUSDC to create one
 
 	/**
 	 * Initialize the Hedera client
@@ -52,11 +52,8 @@ class USDCService {
 		// Create client for testnet (change to mainnet for production)
 		this.client = Client.forTestnet();
 
-		const accountId = await AccountId.fromEvmAddress(
-			0,
-			0,
-			process.env.OPERATOR_ADDRESS
-		).populateAccountNum(this.client);
+		const accountId = AccountId.fromString(process.env.OPERATOR_ADDRESS!);
+		// Use PrivateKey.fromStringECDSA for ECD
 		const privateKey = PrivateKey.fromStringECDSA(process.env.OPERATOR_KEY);
 
 		this.client.setOperator(accountId, privateKey);
