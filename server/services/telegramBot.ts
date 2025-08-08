@@ -1923,7 +1923,8 @@ Please check your transaction details and try again.`;
 			const geminiResponse = await this.geminiService.processMessage(
 				text,
 				chatId,
-				userContext
+				userContext,
+				context
 			);
 
 			console.log('🤖 AI Response:', JSON.stringify(geminiResponse, null, 2));

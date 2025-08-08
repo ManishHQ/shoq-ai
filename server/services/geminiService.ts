@@ -133,18 +133,37 @@ Response: "👋 Hey there! I'm Shoq, your friendly shopping and ticket assistant
 	public async processMessage(
 		userMessage: string,
 		userId: number,
-		userContext?: any
+		userContext?: any,
+		conversationContext?: any
 	): Promise<GeminiResponse> {
 		const maxRetries = 2;
 		let lastError: any;
 
 		for (let attempt = 1; attempt <= maxRetries; attempt++) {
 			try {
-				const prompt = `${await this.getSystemPrompt(userContext)}
+				// Build conversation history for context
+				let conversationHistory = '';
+				if (
+					conversationContext &&
+					conversationContext.conversationHistory &&
+					conversationContext.conversationHistory.length > 0
+				) {
+					conversationHistory = '\n\nCONVERSATION HISTORY:\n';
+					conversationContext.conversationHistory
+						.slice(-5)
+						.forEach((entry: any, index: number) => {
+							conversationHistory += `${index + 1}. User: "${entry.userMessage}"\n`;
+							if (entry.botResponse) {
+								conversationHistory += `   Bot: "${entry.botResponse}"\n`;
+							}
+						});
+					conversationHistory += '\n';
+				}
 
+				const prompt = `${await this.getSystemPrompt(userContext)}${conversationHistory}
 USER MESSAGE: "${userMessage}"
 
-Please analyze the user's intent and respond appropriately. If they want to perform an action, include the action details. If they're just chatting, respond conversationally.`;
+Please analyze the user's intent and respond appropriately. Consider the conversation history to understand context. If they want to perform an action, include the action details. If they're just chatting, respond conversationally.`;
 
 				// Use structured output with schema
 				const response = await this.genAI.models.generateContent({
@@ -272,13 +291,34 @@ Please analyze the user's intent and respond appropriately. If they want to perf
 		};
 	}
 
-	public async getRecommendations(userPreferences: string): Promise<string> {
+	public async getRecommendations(
+		userPreferences: string,
+		conversationContext?: any
+	): Promise<string> {
 		try {
-			const prompt = `${await this.getSystemPrompt()}
+			// Build conversation history for context
+			let conversationHistory = '';
+			if (
+				conversationContext &&
+				conversationContext.conversationHistory &&
+				conversationContext.conversationHistory.length > 0
+			) {
+				conversationHistory = '\n\nCONVERSATION HISTORY:\n';
+				conversationContext.conversationHistory
+					.slice(-5)
+					.forEach((entry: any, index: number) => {
+						conversationHistory += `${index + 1}. User: "${entry.userMessage}"\n`;
+						if (entry.botResponse) {
+							conversationHistory += `   Bot: "${entry.botResponse}"\n`;
+						}
+					});
+				conversationHistory += '\n';
+			}
 
+			const prompt = `${await this.getSystemPrompt()}${conversationHistory}
 USER PREFERENCES: "${userPreferences}"
 
-Based on these preferences, provide personalized recommendations for tickets and shop items. Be specific about why you're recommending each item.`;
+Based on these preferences and conversation history, provide personalized recommendations for tickets and shop items. Be specific about why you're recommending each item.`;
 
 			const response = await this.genAI.models.generateContent({
 				model: 'gemini-2.5-flash',
