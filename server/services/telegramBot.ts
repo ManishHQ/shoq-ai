@@ -6,6 +6,10 @@ import LoggingService from './loggingService.js';
 import User from '../models/user.model.js';
 import { depositService } from './depositService.js';
 import { orderService } from './orderService.js';
+import productService from './productService.js';
+import emailService from './emailService.js';
+import { HederaAIAgent } from '../ai-tools/hedera-agent.js';
+import { hederaVerificationService } from './hederaVerificationService.js';
 
 dotenv.config();
 
@@ -17,32 +21,6 @@ const TICKETS = [
 	{ id: 4, name: 'Sports - Football Match', price: 25, available: true },
 ];
 
-const SHOP_ITEMS = [
-	{ id: 1, name: 'T-Shirt', price: 20, category: 'Clothing', available: true },
-	{ id: 2, name: 'Coffee Mug', price: 8, category: 'Home', available: true },
-	{
-		id: 3,
-		name: 'Phone Case',
-		price: 15,
-		category: 'Electronics',
-		available: true,
-	},
-	{
-		id: 4,
-		name: 'Book - Programming Guide',
-		price: 25,
-		category: 'Books',
-		available: false,
-	},
-	{
-		id: 5,
-		name: 'Headphones',
-		price: 80,
-		category: 'Electronics',
-		available: true,
-	},
-];
-
 class TelegramBotService {
 	private bot: TelegramBot;
 	private userStates: Map<number, any> = new Map();
@@ -52,6 +30,8 @@ class TelegramBotService {
 	private loggingService: LoggingService;
 	private pendingDeposits: Map<number, { step: string; data?: any }> =
 		new Map();
+	private processedTransactions: Set<string> = new Set(); // Track processed transaction hashes
+	private hederaAgent: HederaAIAgent;
 
 	constructor() {
 		const token = process.env.TELEGRAM_BOT_TOKEN || 'YOUR_BOT_TOKEN_HERE';
@@ -71,6 +51,9 @@ class TelegramBotService {
 
 		// Initialize action handler
 		this.actionHandler = new ActionHandler();
+
+		// Initialize Hedera AI agent
+		this.hederaAgent = new HederaAIAgent();
 
 		this.setupHandlers();
 	}
@@ -100,11 +83,27 @@ class TelegramBotService {
 		// Order summary command
 		this.bot.onText(/\/summary/, this.handleOrderSummary.bind(this));
 
+		// Hedera commands
+		this.bot.onText(/\/verify (.+)/, this.handleVerifyTransaction.bind(this));
+		this.bot.onText(/\/balance (.+)/, this.handleCheckBalance.bind(this));
+		this.bot.onText(/\/hstatus (.+)/, this.handleTransactionStatus.bind(this));
+		this.bot.onText(/\/hnetwork/, this.handleNetworkInfo.bind(this));
+
 		// Handle callback queries (button clicks)
 		this.bot.on('callback_query', this.handleCallbackQuery.bind(this));
 
 		// Handle text messages
 		this.bot.on('message', this.handleMessage.bind(this));
+
+		// Handle bot errors
+		this.bot.on('error', (error) => {
+			console.error('🤖 Bot error:', error);
+		});
+
+		// Handle polling errors
+		this.bot.on('polling_error', (error) => {
+			console.error('🔄 Polling error:', error);
+		});
 	}
 
 	private async handleStart(msg: TelegramBot.Message) {
@@ -117,23 +116,164 @@ class TelegramBotService {
 			let user = await User.findOne({ chatId });
 
 			if (!user) {
-				// Register new user
-				user = new User({
-					chatId,
-					username,
-					name: firstName,
-					balance: 0,
-					registeredAt: new Date(),
+				// Check if user exists by email (in case they used another onboarding method)
+				const existingUserByEmail = await User.findOne({
+					$or: [
+						{ email: { $exists: true, $ne: null } },
+						{ walletAddress: { $exists: true, $ne: null } },
+					],
 				});
 
-				await user.save();
-				console.log(`✅ New user registered: ${username} (${chatId})`);
-			} else {
-				console.log(`👋 Existing user: ${username} (${chatId})`);
-			}
+				if (existingUserByEmail) {
+					// User exists but doesn't have chatId - ask for email to link accounts
+					await this.askForEmailToLinkAccount(chatId, firstName, username);
+					return;
+				}
 
-			const welcomeMessage = `
+				// New user - start onboarding flow
+				await this.startOnboarding(chatId, firstName, username);
+				return;
+			} else {
+				// Existing user - check if they have email
+				if (!user.email) {
+					await this.askForEmail(chatId, user);
+					return;
+				}
+
+				console.log(`👋 Existing user: ${username} (${chatId})`);
+				await this.showWelcomeMessage(chatId, user, false); // false = existing user
+			}
+		} catch (error) {
+			console.error('Error in handleStart:', error);
+			await this.bot.sendMessage(
+				chatId,
+				'❌ Sorry, there was an error processing your request. Please try again.'
+			);
+		}
+	}
+
+	private async startOnboarding(
+		chatId: number,
+		firstName: string,
+		username: string
+	) {
+		const welcomeMessage = `
 🎉 Welcome to Shoq Bot!
+
+I'm your friendly shopping and ticket assistant! 🎊
+
+To get started, I need your email address to:
+📧 Send order confirmations and receipts
+📱 Link your account across platforms
+🔔 Keep you updated on your orders
+
+Please send me your email address:
+        `;
+
+		// Store user state for email collection
+		this.userStates.set(chatId, {
+			step: 'collecting_email',
+			data: {
+				firstName,
+				username,
+				isNewUser: true,
+			},
+		});
+
+		await this.bot.sendMessage(chatId, welcomeMessage, {
+			parse_mode: 'Markdown',
+		});
+	}
+
+	private async askForEmailToLinkAccount(
+		chatId: number,
+		firstName: string,
+		username: string
+	) {
+		const message = `
+👋 Welcome back!
+
+I see you might have used our platform before. To link your Telegram account with your existing profile, please send me your email address.
+
+This will help us:
+📧 Connect your accounts
+📱 Sync your order history
+🔔 Send you updates
+
+Please send me your email address:
+        `;
+
+		this.userStates.set(chatId, {
+			step: 'linking_account',
+			data: {
+				firstName,
+				username,
+			},
+		});
+
+		await this.bot.sendMessage(chatId, message, {
+			parse_mode: 'Markdown',
+		});
+	}
+
+	private async askForEmail(chatId: number, user: any) {
+		const message = `
+📧 Email Required
+
+Hi ${user.name}! I need your email address to:
+📧 Send order confirmations and receipts
+📱 Link your account across platforms
+🔔 Keep you updated on your orders
+
+Please send me your email address:
+        `;
+
+		this.userStates.set(chatId, {
+			step: 'collecting_email',
+			data: {
+				existingUser: user,
+			},
+		});
+
+		await this.bot.sendMessage(chatId, message, {
+			parse_mode: 'Markdown',
+		});
+	}
+
+	private async showWelcomeMessage(
+		chatId: number,
+		user: any,
+		isNewUser: boolean = false
+	) {
+		// Send welcome email only to new users
+		if (isNewUser && user.email) {
+			try {
+				console.log(`📧 Sending welcome email to new user: ${user.email}`);
+				const welcomeEmailData = {
+					user: {
+						name: user.name,
+						email: user.email,
+						username: user.username,
+						chatId: user.chatId,
+					},
+					onboardingMethod: 'telegram' as const,
+				};
+
+				const emailSent = await emailService.sendWelcomeEmail(welcomeEmailData);
+				if (emailSent) {
+					console.log(`📧 Welcome email sent to ${user.email}`);
+				} else {
+					console.log(`⚠️ Failed to send welcome email to ${user.email}`);
+				}
+			} catch (error) {
+				console.error('Error sending welcome email:', error);
+			}
+		} else if (user.email) {
+			console.log(`📧 Skipping welcome email for existing user: ${user.email}`);
+		}
+
+		const welcomeMessage = `
+🎉 Welcome back to Shoq Bot!
 
 I'm your friendly shopping and ticket assistant! 🎊
 
@@ -149,32 +289,25 @@ To start shopping, you'll need to deposit USDC to your account.
 Would you like to make a deposit?
 
 Just chat with me naturally - I'll understand what you need! 😊
-    `;
+        `;
 
-			const keyboard = {
-				inline_keyboard: [
-					[
-						{ text: '💰 Make Deposit', callback_data: 'deposit' },
-						{ text: '💳 Check Balance', callback_data: 'balance' },
-					],
-					[
-						{ text: '🛍️ Start Shopping', callback_data: 'shop' },
-						{ text: '❓ Help', callback_data: 'help' },
-					],
+		const keyboard = {
+			inline_keyboard: [
+				[
+					{ text: '💰 Make Deposit', callback_data: 'deposit' },
+					{ text: '💳 Check Balance', callback_data: 'balance' },
 				],
-			};
+				[
+					{ text: '🛍️ Start Shopping', callback_data: 'shop' },
+					{ text: '❓ Help', callback_data: 'help' },
+				],
+			],
+		};
 
-			await this.bot.sendMessage(chatId, welcomeMessage, {
-				parse_mode: 'Markdown',
-				reply_markup: keyboard,
-			});
-		} catch (error) {
-			console.error('Error in handleStart:', error);
-			await this.bot.sendMessage(
-				chatId,
-				'❌ Sorry, there was an error processing your request. Please try again.'
-			);
-		}
+		await this.bot.sendMessage(chatId, welcomeMessage, {
+			parse_mode: 'Markdown',
+			reply_markup: keyboard,
+		});
 	}
 
 	private async handleHelp(msg: TelegramBot.Message) {
@@ -190,6 +323,12 @@ Just chat with me naturally - I'll understand what you need! 😊
 /history - View conversation history
 /clear - Clear conversation history
 /help - Show this help message
+
+**🔧 Hedera Commands:**
+/verify [tx-id] - Verify USDC transaction
+/balance [account-id] - Check account balance
+/hstatus [tx-id] - Get transaction status
+/hnetwork - Show network info
 
 **How to use:**
 1. Use /tickets to see available tickets
@@ -267,9 +406,14 @@ Need more help? Contact support!
 				return;
 			}
 
-			const availableItems = SHOP_ITEMS.filter((item) => item.available);
+			// Get available products from database
+			const productResult = await productService.getAvailableProducts();
 
-			if (availableItems.length === 0) {
+			if (
+				!productResult.success ||
+				!productResult.products ||
+				productResult.products.length === 0
+			) {
 				await this.bot.sendMessage(
 					chatId,
 					'❌ No items available at the moment.'
@@ -277,12 +421,14 @@ Need more help? Contact support!
 				return;
 			}
 
+			const availableItems = productResult.products;
+
 			let message = `🛍️ **Available Items**\n\n💰 **Your Balance:** $${user.balance} USDC\n\n`;
 			const keyboard = {
 				inline_keyboard: availableItems.map((item) => [
 					{
 						text: `${item.name} - $${item.price} ${user.balance >= item.price ? '✅' : '❌'}`,
-						callback_data: `item_${item.id}`,
+						callback_data: `item_${item.productId}`,
 					},
 				]),
 			};
@@ -290,7 +436,7 @@ Need more help? Contact support!
 			availableItems.forEach((item) => {
 				const canAfford =
 					user.balance >= item.price ? '✅ Affordable' : '❌ Need more funds';
-				message += `🛍️ **${item.name}**\n💰 Price: $${item.price}\n📂 Category: ${item.category}\n${canAfford}\n\n`;
+				message += `🛍️ **${item.name}**\n💰 Price: $${item.price}\n📂 Category: ${item.category}\n📦 Stock: ${item.stockQuantity}\n${canAfford}\n\n`;
 			});
 
 			message +=
@@ -328,8 +474,20 @@ Need more help? Contact support!
 
 		if (!chatId || !data) return;
 
-		// Answer the callback query
-		await this.bot.answerCallbackQuery(query.id);
+		// Answer the callback query with error handling
+		try {
+			await this.bot.answerCallbackQuery(query.id);
+		} catch (error: any) {
+			// Handle expired callback queries gracefully
+			if (
+				error.response?.body?.error_code === 400 &&
+				error.response?.body?.description?.includes('query is too old')
+			) {
+				console.log('⚠️ Callback query expired, continuing with action');
+			} else {
+				console.error('Error answering callback query:', error);
+			}
+		}
 
 		if (data === 'tickets') {
 			await this.showTickets(chatId);
@@ -377,17 +535,17 @@ Need more help? Contact support!
 			const ticketId = parseInt(data.split('_')[1]);
 			await this.handleTicketSelection(chatId, ticketId);
 		} else if (data.startsWith('item_')) {
-			const itemId = parseInt(data.split('_')[1]);
-			await this.handleItemSelection(chatId, itemId);
+			const productId = data.split('_')[1];
+			await this.handleItemSelection(chatId, productId);
 		} else if (data.startsWith('confirm_ticket_')) {
 			const ticketId = parseInt(data.split('_')[2]);
 			await this.confirmTicketBooking(chatId, ticketId);
 		} else if (data.startsWith('confirm_item_')) {
-			const itemId = parseInt(data.split('_')[2]);
-			await this.confirmItemPurchase(chatId, itemId);
+			const productId = data.split('_')[2];
+			await this.confirmItemPurchase(chatId, productId);
 		} else if (data.startsWith('preview_item_')) {
-			const itemId = parseInt(data.split('_')[2]);
-			await this.handleItemPreview(chatId, itemId);
+			const productId = data.split('_')[2];
+			await this.handleItemPreview(chatId, productId);
 		} else if (data.startsWith('view_order_')) {
 			const orderId = data.split('_')[2];
 			await this.handleViewOrder(chatId, orderId);
@@ -441,7 +599,7 @@ Would you like to book this ticket?
 		});
 	}
 
-	private async handleItemSelection(chatId: number, itemId: number) {
+	private async handleItemSelection(chatId: number, productId: string) {
 		try {
 			const user = await User.findOne({ chatId });
 			if (!user) {
@@ -452,13 +610,20 @@ Would you like to book this ticket?
 				return;
 			}
 
-			const item = SHOP_ITEMS.find((i) => i.id === itemId);
+			const productResult = await productService.getProductById(productId);
 
-			if (!item || !item.available) {
+			if (!productResult.success || !productResult.product) {
 				await this.bot.sendMessage(
 					chatId,
 					'❌ This item is no longer available.'
 				);
+				return;
+			}
+
+			const item = productResult.product;
+
+			if (!item.inStock || item.stockQuantity <= 0) {
+				await this.bot.sendMessage(chatId, '❌ This item is out of stock.');
 				return;
 			}
 
@@ -469,7 +634,8 @@ Would you like to book this ticket?
 **Name:** ${item.name}
 **Price:** $${item.price}
 **Category:** ${item.category}
-**Status:** Available
+**Stock:** ${item.stockQuantity} available
+**Status:** ${item.inStock ? 'In Stock' : 'Out of Stock'}
 
 💰 **Your Balance:** $${user.balance}
 ${canAfford ? '✅ **You can afford this item!**' : '❌ **Insufficient balance**'}
@@ -483,14 +649,14 @@ ${canAfford ? 'Would you like to buy this item?' : 'Please make a deposit to pur
 							[
 								{
 									text: '✅ Confirm Purchase',
-									callback_data: `confirm_item_${itemId}`,
+									callback_data: `confirm_item_${productId}`,
 								},
 								{ text: '❌ Cancel', callback_data: 'shop' },
 							],
 							[
 								{
 									text: '🔍 View Order Preview',
-									callback_data: `preview_item_${itemId}`,
+									callback_data: `preview_item_${productId}`,
 								},
 							],
 						]
@@ -554,19 +720,21 @@ Thank you for using our service! 🎉
 		});
 	}
 
-	private async confirmItemPurchase(chatId: number, itemId: number) {
+	private async confirmItemPurchase(chatId: number, productId: string) {
 		try {
-			const item = SHOP_ITEMS.find((i) => i.id === itemId);
+			const productResult = await productService.getProductById(productId);
 
-			if (!item) {
+			if (!productResult.success || !productResult.product) {
 				await this.bot.sendMessage(chatId, '❌ Item not found.');
 				return;
 			}
 
+			const item = productResult.product;
+
 			// Process the order
 			const orderResult = await orderService.createOrder({
 				chatId,
-				item: item.name,
+				productId: item.productId,
 				quantity: 1,
 				totalPrice: item.price,
 			});
@@ -579,6 +747,7 @@ Thank you for using our service! 🎉
 **Order ID:** #${orderResult.order.orderId}
 **Item:** ${item.name}
 **Price:** $${item.price}
+**Transaction Hash:** ${orderResult.transactionHash}
 **Status:** Confirmed
 
 💰 **Updated Balance:** $${user?.balance || 0} USDC
@@ -638,15 +807,17 @@ Please try again or contact support if the issue persists.`;
 		}
 	}
 
-	private async handleItemPreview(chatId: number, itemId: number) {
+	private async handleItemPreview(chatId: number, productId: string) {
 		try {
 			const user = await User.findOne({ chatId });
-			const item = SHOP_ITEMS.find((i) => i.id === itemId);
+			const productResult = await productService.getProductById(productId);
 
-			if (!user || !item) {
+			if (!user || !productResult.success || !productResult.product) {
 				await this.bot.sendMessage(chatId, '❌ Preview not available.');
 				return;
 			}
+
+			const item = productResult.product;
 
 			const message = `
 📋 **Order Preview**
@@ -667,7 +838,7 @@ Ready to confirm your purchase?
 					[
 						{
 							text: '✅ Confirm Purchase',
-							callback_data: `confirm_item_${itemId}`,
+							callback_data: `confirm_item_${productId}`,
 						},
 						{ text: '❌ Cancel', callback_data: 'shop' },
 					],
@@ -689,7 +860,11 @@ Ready to confirm your purchase?
 
 	private async handleViewOrder(chatId: number, orderId: string) {
 		try {
-			const order = await orderService.getOrder(orderId);
+			// Try to get order by MongoDB _id first, then by orderId
+			let order = await orderService.getOrderById(orderId);
+			if (!order) {
+				order = await orderService.getOrder(orderId);
+			}
 
 			if (!order) {
 				await this.bot.sendMessage(chatId, '❌ Order not found.');
@@ -707,16 +882,17 @@ Ready to confirm your purchase?
 📋 **Order Details**
 
 **Order ID:** #${order.orderId}
-**Item:** ${order.item}
-**Quantity:** ${order.quantity}
+**Item:** ${order.items[0]?.name || 'N/A'}
+**Quantity:** ${order.items[0]?.quantity || 1}
 **Total:** $${order.totalPrice}
 **Status:** ${statusEmoji[order.status]} ${order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+**Transaction Hash:** ${order.transactionHash || 'N/A'}
 **Order Date:** ${order.createdAt.toLocaleDateString()}
 
 ${order.status === 'confirmed' ? '📦 Your order is being prepared for delivery!' : ''}
 ${order.status === 'delivered' ? '🎉 Your order has been delivered!' : ''}
 
-🔗 **Order Link:** ${process.env.FRONTEND_URL || 'http://localhost:3000'}/order/${order.orderId}
+🔗 **Order Link:** ${process.env.FRONTEND_URL || 'http://localhost:3000'}/orders/${order._id}
 			`;
 
 			const keyboard = {
@@ -798,68 +974,53 @@ ${order.status === 'delivered' ? '🎉 Your order has been delivered!' : ''}
 		console.log('🔘 Identifier:', identifier);
 
 		try {
-			switch (action) {
-				case 'view_order':
-					await this.handleViewOrder(chatId, identifier);
-					break;
+			// Handle compound actions like confirm_purchase
+			if (action === 'confirm' && identifier === 'purchase') {
+				const itemId = parts[3];
+				const quantity = parts[4] || '1';
 
-				case 'track_order':
-					await this.handleViewOrder(chatId, identifier);
-					break;
+				console.log('🔘 === CONFIRM PURCHASE DEBUG ===');
+				console.log('🔘 Callback Data:', callbackData);
+				console.log('🔘 Parts:', parts);
+				console.log('🔘 ItemId:', itemId, 'Quantity:', quantity);
 
-				case 'confirm_purchase':
-					const parts = callbackData.split('_');
-					const itemId = parts[2];
-					const quantity = parts[3] || '1';
+				const purchaseResponse = await this.actionHandler.executeAction(
+					{
+						action: 'CONFIRM_PURCHASE',
+						parameters: { itemId, quantity: parseInt(quantity) },
+						confidence: 1,
+					},
+					chatId
+				);
 
-					console.log('🔘 === CONFIRM PURCHASE DEBUG ===');
-					console.log('🔘 Callback Data:', callbackData);
-					console.log('🔘 Parts:', parts);
-					console.log('🔘 ItemId:', itemId, 'Quantity:', quantity);
+				if (purchaseResponse.success && purchaseResponse.data?.uiActions) {
+					const keyboard = {
+						inline_keyboard: purchaseResponse.data.uiActions.map(
+							(uiAction: any) => [
+								{
+									text: uiAction.text,
+									callback_data: `ui_${uiAction.action}_${uiAction.orderId || uiAction.category || 'default'}`,
+								},
+							]
+						),
+					};
 
-					const purchaseResponse = await this.actionHandler.executeAction(
-						{
-							action: 'CONFIRM_PURCHASE',
-							parameters: { itemId, quantity: parseInt(quantity) },
-							confidence: 1,
-						},
-						chatId
-					);
-
-					if (purchaseResponse.success && purchaseResponse.data?.uiActions) {
-						const keyboard = {
-							inline_keyboard: purchaseResponse.data.uiActions.map(
-								(uiAction: any) => [
-									{
-										text: uiAction.text,
-										callback_data: `ui_${uiAction.action}_${uiAction.orderId || uiAction.category || 'default'}`,
-									},
-								]
-							),
-						};
-
-						// Check if we have item details with an image for the confirmation
-						if (purchaseResponse.data?.itemDetails?.imageUrl) {
-							try {
-								// Send photo with caption and buttons
-								await this.bot.sendPhoto(
-									chatId,
-									purchaseResponse.data.itemDetails.imageUrl,
-									{
-										caption: purchaseResponse.message,
-										parse_mode: 'Markdown',
-										reply_markup: keyboard,
-									}
-								);
-							} catch (imageError) {
-								console.error('Error sending confirmation image:', imageError);
-								// Fallback to text message if image fails
-								await this.bot.sendMessage(chatId, purchaseResponse.message, {
+					// Check if we have item details with an image for the confirmation
+					if (purchaseResponse.data?.itemDetails?.imageUrl) {
+						try {
+							// Send photo with caption and buttons
+							await this.bot.sendPhoto(
+								chatId,
+								purchaseResponse.data.itemDetails.imageUrl,
+								{
+									caption: purchaseResponse.message,
 									parse_mode: 'Markdown',
 									reply_markup: keyboard,
-								});
-							}
-						} else {
+								}
+							);
+						} catch (imageError) {
+							console.error('Error sending confirmation image:', imageError);
+							// Fallback to text message if image fails
 							await this.bot.sendMessage(chatId, purchaseResponse.message, {
 								parse_mode: 'Markdown',
 								reply_markup: keyboard,
@@ -868,10 +1029,58 @@ ${order.status === 'delivered' ? '🎉 Your order has been delivered!' : ''}
 					} else {
 						await this.bot.sendMessage(chatId, purchaseResponse.message, {
 							parse_mode: 'Markdown',
+							reply_markup: keyboard,
 						});
 					}
-					break;
+				} else {
+					await this.bot.sendMessage(chatId, purchaseResponse.message, {
+						parse_mode: 'Markdown',
+					});
+				}
+				return;
+			}
 
+			// Handle cancel_purchase
+			if (action === 'cancel' && identifier === 'purchase') {
+				await this.bot.sendMessage(
+					chatId,
+					'❌ Purchase cancelled. What else can I help you with?'
+				);
+				return;
+			}
+
+			// Handle view_order
+			if (action === 'view' && identifier === 'order') {
+				const orderId = parts[3];
+				await this.handleViewOrder(chatId, orderId);
+				return;
+			}
+
+			// Handle track_order
+			if (action === 'track' && identifier === 'order') {
+				const orderId = parts[3];
+				await this.handleViewOrder(chatId, orderId);
+				return;
+			}
+
+			// Handle recommend_similar
+			if (action === 'recommend' && identifier === 'similar') {
+				const category = parts[3];
+				const recommendationResponse = await this.actionHandler.executeAction(
+					{
+						action: 'GET_RECOMMENDATIONS',
+						parameters: { preference: category },
+						confidence: 1,
+					},
+					chatId
+				);
+				await this.bot.sendMessage(chatId, recommendationResponse.message, {
+					parse_mode: 'Markdown',
+				});
+				return;
+			}
+
+			switch (action) {
 				case 'confirm_booking':
 					const bookingParts = callbackData.split('_');
 					const ticketId = bookingParts[2];
@@ -908,11 +1117,10 @@ ${order.status === 'delivered' ? '🎉 Your order has been delivered!' : ''}
 					}
 					break;
 
-				case 'cancel_purchase':
 				case 'cancel_booking':
 					await this.bot.sendMessage(
 						chatId,
-						'❌ Purchase cancelled. What else can I help you with?'
+						'❌ Booking cancelled. What else can I help you with?'
 					);
 					break;
 
@@ -926,20 +1134,6 @@ ${order.status === 'delivered' ? '🎉 Your order has been delivered!' : ''}
 
 				case 'browse_tickets':
 					await this.showTickets(chatId);
-					break;
-
-				case 'recommend_similar':
-					const recommendationResponse = await this.actionHandler.executeAction(
-						{
-							action: 'GET_RECOMMENDATIONS',
-							parameters: { preference: identifier },
-							confidence: 1,
-						},
-						chatId
-					);
-					await this.bot.sendMessage(chatId, recommendationResponse.message, {
-						parse_mode: 'Markdown',
-					});
 					break;
 
 				default:
@@ -1113,20 +1307,25 @@ Just type naturally and I'll understand what you need!`;
 
 To start using Shoq, please deposit USDC to our AI Wallet:
 
-**Wallet Address:** 
-${process.env.AI_WALLET_ADDRESS}
+**Hedera Account:** 
+${process.env.OPERATOR_ADDRESS}
 
 **Steps:**
-1. Send USDC from your wallet to the address above
-2. Copy your transaction hash
-3. Submit the transaction hash using the button below
+1. Send USDC from your Hedera wallet to the account above
+2. Copy your transaction ID (format: 0.0.123@456.789)
+3. Submit the transaction ID using the button below
 
-⚠️ **Important:** Make sure to send from a wallet you control and save your wallet address for verification.
+⚠️ **Important:** 
+- Use Hedera network (testnet/mainnet)
+- Transaction ID automatically includes your account
+- No need to provide wallet address separately
+
+**Need USDC?** Get testnet USDC from Hedera faucet or exchanges.
 		`;
 
 		const keyboard = {
 			inline_keyboard: [
-				[{ text: '📋 Submit Transaction Hash', callback_data: 'submit_tx' }],
+				[{ text: '📋 Submit Transaction ID', callback_data: 'submit_tx' }],
 				[{ text: '🏠 Back to Menu', callback_data: 'start' }],
 			],
 		};
@@ -1186,23 +1385,132 @@ ${user.balance === 0 ? '💡 **Tip:** Make a deposit to start shopping!' : '🎉
 		this.pendingDeposits.set(chatId, { step: 'waiting_tx_hash' });
 
 		const message = `
-📋 **Submit Transaction Hash**
+📋 **Submit Transaction ID**
 
-Please send me your transaction hash from the USDC transfer.
+Please send me your Hedera transaction ID from the USDC transfer.
 
-**Format:** Just paste the transaction hash (e.g., 0xabc123...)
+**Format:** 0.0.123456@1234567890.123456789
 
 ⚠️ **Make sure:**
 - You sent USDC to the correct wallet address
-- The transaction is confirmed on the blockchain
-- You have the wallet address you sent from ready
+- The transaction is confirmed on Hedera network
+- The transaction ID includes your account (before @ symbol)
 
-Type your transaction hash below:
+**Example:** 0.0.6494628@1754664574.369070408
+
+Type your transaction ID below:
 		`;
 
 		await this.bot.sendMessage(chatId, message, {
 			parse_mode: 'Markdown',
 		});
+	}
+
+	private async handleEmailSubmission(
+		chatId: number,
+		email: string,
+		userState: any
+	): Promise<boolean> {
+		try {
+			// Validate email format
+			const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+			if (!emailRegex.test(email)) {
+				await this.bot.sendMessage(
+					chatId,
+					'❌ Please provide a valid email address. For example: user@example.com'
+				);
+				return true;
+			}
+
+			// Check if email is already in use
+			const existingUser = await User.findOne({ email });
+			if (existingUser && existingUser.chatId !== chatId) {
+				await this.bot.sendMessage(
+					chatId,
+					'❌ This email is already associated with another account. Please use a different email address.'
+				);
+				return true;
+			}
+
+			// Process based on user state
+			if (userState.step === 'linking_account') {
+				// Link existing account
+				if (existingUser) {
+					existingUser.chatId = chatId;
+					existingUser.onboardingMethod = 'telegram';
+					await existingUser.save();
+
+					await this.bot.sendMessage(
+						chatId,
+						`✅ **Account Linked Successfully!**
+
+Welcome back! Your Telegram account has been linked to your existing profile.
+
+📧 **Email:** ${existingUser.email}
+💰 **Balance:** $${existingUser.balance} USDC
+
+You can now start shopping and managing your orders!`
+					);
+
+					// Clear user state and show welcome message
+					this.userStates.delete(chatId);
+					await this.showWelcomeMessage(chatId, existingUser, false); // false = existing user
+				} else {
+					await this.bot.sendMessage(
+						chatId,
+						'❌ No existing account found with this email. Please check your email address or start a new account.'
+					);
+				}
+			} else if (userState.step === 'collecting_email') {
+				// Create new user or update existing user
+				let user: any;
+
+				if (userState.data.existingUser) {
+					// Update existing user with email
+					user = userState.data.existingUser;
+					user.email = email;
+					await user.save();
+				} else {
+					// Create new user
+					user = new User({
+						chatId,
+						username: userState.data.username,
+						name: userState.data.firstName,
+						email,
+						balance: 0,
+						onboardingMethod: 'telegram',
+						emailNotifications: true,
+						registeredAt: new Date(),
+					});
+					await user.save();
+				}
+
+				await this.bot.sendMessage(
+					chatId,
+					`✅ **Account Created Successfully!**
+
+🎉 Welcome to Shoq! Your account has been set up.
+
+📧 **Email:** ${email}
+💰 **Balance:** $${user.balance} USDC
+
+You can now start shopping and managing your orders!`
+				);
+
+				// Clear user state and show welcome message
+				this.userStates.delete(chatId);
+				await this.showWelcomeMessage(chatId, user, true); // true = new user
+			}
+
+			return true;
+		} catch (error) {
+			console.error('Error handling email submission:', error);
+			await this.bot.sendMessage(
+				chatId,
+				'❌ Error processing email. Please try again.'
+			);
+			return true;
+		}
 	}
 
 	private async handleTransactionHashSubmission(
@@ -1215,59 +1523,55 @@ Type your transaction hash below:
 				return false; // Not in transaction submission flow
 			}
 
-			// Store tx hash and ask for wallet address
-			this.pendingDeposits.set(chatId, {
-				step: 'waiting_wallet_address',
-				data: { txHash: txHash.trim() },
-			});
+			// Extract account ID from Hedera transaction ID
+			// Format: 0.0.123456@1234567890.123456789
+			const cleanTxHash = txHash.trim();
 
-			const message = `
-✅ **Transaction Hash Received**
+			// Check if this transaction has already been processed
+			if (this.processedTransactions.has(cleanTxHash)) {
+				await this.bot.sendMessage(
+					chatId,
+					'⚠️ This transaction has already been processed. Please provide a different transaction hash.'
+				);
+				return true;
+			}
 
-Transaction Hash: \`${txHash}\`
+			let senderAccountId = '';
 
-Now, please provide the wallet address you sent the USDC from.
+			if (cleanTxHash.includes('@')) {
+				senderAccountId = cleanTxHash.split('@')[0];
+			} else if (cleanTxHash.includes('-')) {
+				// Handle format: 0.0.123456-1234567890-123456789
+				senderAccountId = cleanTxHash.split('-')[0];
+			}
 
-**Format:** 0x... (your wallet address)
-
-This helps us verify that you own the transaction.
-			`;
-
-			await this.bot.sendMessage(chatId, message, {
-				parse_mode: 'Markdown',
-			});
-
-			return true;
-		} catch (error) {
-			console.error('Error handling transaction hash:', error);
-			await this.bot.sendMessage(
-				chatId,
-				'❌ Error processing transaction hash. Please try again.'
-			);
-			return false;
-		}
-	}
-
-	private async handleWalletAddressSubmission(
-		chatId: number,
-		walletAddress: string
-	) {
-		try {
-			const pendingDeposit = this.pendingDeposits.get(chatId);
-			if (!pendingDeposit || pendingDeposit.step !== 'waiting_wallet_address') {
+			if (!senderAccountId || !senderAccountId.match(/^0\.0\.\d+$/)) {
+				await this.bot.sendMessage(
+					chatId,
+					'❌ Invalid transaction ID format. Please provide a Hedera transaction ID.\n\n**Format:** 0.0.123456@1234567890.123456789'
+				);
 				return false;
 			}
 
 			await this.bot.sendMessage(
 				chatId,
-				'🔍 Verifying your deposit...\nThis may take a moment.'
+				`✅ **Transaction Hash Received**
+
+Transaction ID: \`${cleanTxHash}\`
+Sender Account: \`${senderAccountId}\`
+
+🔍 Verifying your deposit...
+This may take a moment.`
 			);
 
-			// Verify the deposit
+			// Mark transaction as being processed
+			this.processedTransactions.add(cleanTxHash);
+
+			// Verify the deposit directly
 			const result = await depositService.verifyDeposit({
 				chatId,
-				txHash: pendingDeposit.data.txHash,
-				walletAddress: walletAddress.trim(),
+				txHash: cleanTxHash,
+				walletAddress: senderAccountId, // Use extracted account ID
 			});
 
 			// Clear pending deposit
@@ -1276,13 +1580,11 @@ This helps us verify that you own the transaction.
 			if (result.success) {
 				// Success message with updated balance
 				const user = await User.findOne({ chatId });
-				const successMessage = `
-${result.message}
+				const successMessage = `${result.message}
 
 💰 **Updated Balance:** $${user?.balance || 0} USDC
 
-🎉 **You're all set to start shopping!**
-				`;
+🎉 **You're all set to start shopping!**`;
 
 				const keyboard = {
 					inline_keyboard: [
@@ -1319,11 +1621,11 @@ Please check your transaction details and try again.`;
 
 			return true;
 		} catch (error) {
-			console.error('Error handling wallet address:', error);
+			console.error('Error handling transaction hash:', error);
 			this.pendingDeposits.delete(chatId);
 			await this.bot.sendMessage(
 				chatId,
-				'❌ Error processing wallet address. Please try again.'
+				'❌ Error processing transaction hash. Please try again.'
 			);
 			return false;
 		}
@@ -1395,17 +1697,20 @@ Please check your transaction details and try again.`;
 
 		// Check if user is in a deposit submission flow
 		const pendingDeposit = this.pendingDeposits.get(chatId);
-		if (pendingDeposit) {
-			if (pendingDeposit.step === 'waiting_tx_hash') {
-				const handled = await this.handleTransactionHashSubmission(
-					chatId,
-					text
-				);
-				if (handled) return;
-			} else if (pendingDeposit.step === 'waiting_wallet_address') {
-				const handled = await this.handleWalletAddressSubmission(chatId, text);
-				if (handled) return;
-			}
+		if (pendingDeposit && pendingDeposit.step === 'waiting_tx_hash') {
+			const handled = await this.handleTransactionHashSubmission(chatId, text);
+			if (handled) return;
+		}
+
+		// Check if user is in email collection flow
+		const userState = this.userStates.get(chatId);
+		if (
+			userState &&
+			(userState.step === 'collecting_email' ||
+				userState.step === 'linking_account')
+		) {
+			const handled = await this.handleEmailSubmission(chatId, text, userState);
+			if (handled) return;
 		}
 
 		// Get or create conversation context
@@ -1537,14 +1842,71 @@ Please check your transaction details and try again.`;
 				return;
 			}
 
+			// Check if message contains Hedera-related content
+			const lowerText = text.toLowerCase();
+			const hederaKeywords = [
+				'verify',
+				'transaction',
+				'balance',
+				'hedera',
+				'usdc',
+				'0.0.',
+				'network',
+			];
+			const containsHedera = hederaKeywords.some((keyword) =>
+				lowerText.includes(keyword)
+			);
+
+			if (containsHedera) {
+				try {
+					const hederaResult = await this.hederaAgent.processQuery(text);
+
+					if (hederaResult.toolsUsed.length > 0) {
+						// Hedera tools were used, show the result
+						const keyboard = {
+							inline_keyboard: [
+								[
+									{ text: '💰 Make Deposit', callback_data: 'deposit' },
+									{ text: '🛍️ Start Shopping', callback_data: 'shop' },
+								],
+							],
+						};
+
+						await this.bot.sendMessage(chatId, hederaResult.response, {
+							parse_mode: 'Markdown',
+							reply_markup: keyboard,
+						});
+						return;
+					}
+				} catch (hederaError) {
+					console.error('Hedera processing error:', hederaError);
+					// Continue to regular AI processing
+				}
+			}
+
+			// Get user context for AI
+			const user = await User.findOne({ chatId });
+			const userContext = user
+				? {
+						userId: user._id,
+						chatId: user.chatId,
+						email: user.email,
+						name: user.name,
+						balance: user.balance,
+						onboardingMethod: user.onboardingMethod,
+					}
+				: undefined;
+
 			// Process with Gemini AI
 			console.log('🤖 === AI PROCESSING ===');
 			console.log('🤖 Input Text:', text);
 			console.log('🤖 User ID for AI:', chatId);
+			console.log('🤖 User Context:', userContext);
 
 			const geminiResponse = await this.geminiService.processMessage(
 				text,
-				chatId
+				chatId,
+				userContext
 			);
 
 			console.log('🤖 AI Response:', JSON.stringify(geminiResponse, null, 2));
@@ -1725,6 +2087,157 @@ Please check your transaction details and try again.`;
 		}
 	}
 
+	// Hedera command handlers
+	private async handleVerifyTransaction(
+		msg: TelegramBot.Message,
+		match: RegExpExecArray | null
+	) {
+		const chatId = msg.chat.id;
+		const transactionId = match?.[1];
+
+		if (!transactionId) {
+			await this.bot.sendMessage(
+				chatId,
+				'❌ Please provide a transaction ID.\n\nFormat: /verify 0.0.123@456.789'
+			);
+			return;
+		}
+
+		const cleanTxHash = transactionId.trim();
+
+		// Check if this transaction has already been processed
+		if (this.processedTransactions.has(cleanTxHash)) {
+			await this.bot.sendMessage(
+				chatId,
+				'⚠️ This transaction has already been processed. Please provide a different transaction hash.'
+			);
+			return;
+		}
+
+		await this.bot.sendChatAction(chatId, 'typing');
+		await this.bot.sendMessage(
+			chatId,
+			'🔍 Verifying transaction... Please wait.'
+		);
+
+		// Mark transaction as being processed
+		this.processedTransactions.add(cleanTxHash);
+
+		try {
+			const result = await this.hederaAgent.processQuery(
+				`Verify transaction ${transactionId}`
+			);
+
+			const keyboard = {
+				inline_keyboard: [
+					[
+						{ text: '💰 Make Deposit', callback_data: 'deposit' },
+						{ text: '🛍️ Start Shopping', callback_data: 'shop' },
+					],
+				],
+			};
+
+			await this.bot.sendMessage(chatId, result.response, {
+				parse_mode: 'Markdown',
+				reply_markup: keyboard,
+			});
+		} catch (error) {
+			console.error('Error verifying transaction:', error);
+			await this.bot.sendMessage(
+				chatId,
+				'❌ Error verifying transaction. Please try again.'
+			);
+		}
+	}
+
+	private async handleCheckBalance(
+		msg: TelegramBot.Message,
+		match: RegExpExecArray | null
+	) {
+		const chatId = msg.chat.id;
+		const accountId = match?.[1];
+
+		if (!accountId) {
+			await this.bot.sendMessage(
+				chatId,
+				'❌ Please provide an account ID.\n\nFormat: /balance 0.0.123456'
+			);
+			return;
+		}
+
+		await this.bot.sendChatAction(chatId, 'typing');
+
+		try {
+			const result = await this.hederaAgent.processQuery(
+				`Check balance of account ${accountId}`
+			);
+
+			await this.bot.sendMessage(chatId, result.response, {
+				parse_mode: 'Markdown',
+			});
+		} catch (error) {
+			console.error('Error checking balance:', error);
+			await this.bot.sendMessage(
+				chatId,
+				'❌ Error checking balance. Please try again.'
+			);
+		}
+	}
+
+	private async handleTransactionStatus(
+		msg: TelegramBot.Message,
+		match: RegExpExecArray | null
+	) {
+		const chatId = msg.chat.id;
+		const transactionId = match?.[1];
+
+		if (!transactionId) {
+			await this.bot.sendMessage(
+				chatId,
+				'❌ Please provide a transaction ID.\n\nFormat: /hstatus 0.0.123@456.789'
+			);
+			return;
+		}
+
+		await this.bot.sendChatAction(chatId, 'typing');
+
+		try {
+			const result = await this.hederaAgent.processQuery(
+				`What's the status of transaction ${transactionId}?`
+			);
+
+			await this.bot.sendMessage(chatId, result.response, {
+				parse_mode: 'Markdown',
+			});
+		} catch (error) {
+			console.error('Error getting transaction status:', error);
+			await this.bot.sendMessage(
+				chatId,
+				'❌ Error getting transaction status. Please try again.'
+			);
+		}
+	}
+
+	private async handleNetworkInfo(msg: TelegramBot.Message) {
+		const chatId = msg.chat.id;
+
+		try {
+			const result = await this.hederaAgent.processQuery(
+				'Show network information'
+			);
+
+			await this.bot.sendMessage(chatId, result.response, {
+				parse_mode: 'Markdown',
+			});
+		} catch (error) {
+			console.error('Error getting network info:', error);
+			await this.bot.sendMessage(
+				chatId,
+				'❌ Error getting network information. Please try again.'
+			);
+		}
+	}
+
 	public start() {
 		console.log('🤖 Telegram bot is running...');
 	}
@@ -1732,6 +2245,30 @@ Please check your transaction details and try again.`;
 	public stop() {
 		this.bot.stopPolling();
 		console.log('🤖 Telegram bot stopped.');
+	}
+
+	/**
+	 * Clean up old processed transactions to prevent memory leaks
+	 * This should be called periodically (e.g., every hour)
+	 */
+	private cleanupProcessedTransactions() {
+		// For now, we'll keep all transactions in memory
+		// In a production environment, you might want to:
+		// 1. Store processed transactions in a database
+		// 2. Set up a cron job to clean old entries
+		// 3. Use Redis with TTL for automatic cleanup
+
+		const maxTransactions = 1000; // Keep last 1000 transactions
+		if (this.processedTransactions.size > maxTransactions) {
+			// Convert to array, take last maxTransactions, convert back to Set
+			const transactionsArray = Array.from(this.processedTransactions);
+			this.processedTransactions = new Set(
+				transactionsArray.slice(-maxTransactions)
+			);
+			console.log(
+				`🧹 Cleaned up processed transactions. Current count: ${this.processedTransactions.size}`
+			);
+		}
 	}
 }
 

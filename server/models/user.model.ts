@@ -38,12 +38,12 @@ const userSchema = new mongoose.Schema<User>(
 		},
 		email: {
 			type: String,
-			required: function () {
-				return this.onboardingMethod !== 'telegram';
-			},
+			required: true, // Email is now required for all onboarding methods
+			unique: true,
+			index: true,
 			validate: {
 				validator: function (email: string) {
-					return !email || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+					return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 				},
 				message: 'Please provide a valid email address',
 			},

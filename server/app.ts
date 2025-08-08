@@ -7,6 +7,7 @@ import cors from 'cors';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
 import TelegramBotService from './services/telegramBot.js';
+import productService from './services/productService.js';
 
 dotenv.config();
 
@@ -20,6 +21,7 @@ import tokenRoutes from './routes/token.route.js';
 import chatRoutes from './routes/chat.route.js';
 import purchaseRoutes from './routes/purchase.route.js';
 import depositRoutes from './routes/deposit.route.js';
+import ordersRoutes from './routes/orders.route.js';
 
 // init app
 const app = express();
@@ -38,7 +40,11 @@ app.use(express.json());
 app.use(
 	cors({
 		origin: function (origin, callback) {
-			const allowedOrigins = ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:3001'];
+			const allowedOrigins = [
+				'http://localhost:5173',
+				'http://localhost:3000',
+				'http://localhost:3001',
+			];
 
 			// Allow requests with no origin (like mobile apps or curl requests)
 			if (!origin) return callback(null, true);
@@ -70,6 +76,7 @@ app.use('/token', tokenRoutes);
 app.use('/chat', chatRoutes);
 app.use('/purchase', purchaseRoutes);
 app.use('/deposits', depositRoutes);
+app.use('/api/orders', ordersRoutes);
 
 // test route
 app.use('/test', (req: Request, res: Response) => {
@@ -89,9 +96,17 @@ app.get('/', (req: Request, res: Response) => {
 // Initialize Telegram bot
 const telegramBot = new TelegramBotService();
 
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
 	console.log(`Server is running on http://localhost:${PORT}`);
 	console.log(`🤖 Telegram bot is ready!`);
+
+	// Initialize default products
+	try {
+		await productService.initializeDefaultProducts();
+		console.log('✅ Products initialized successfully');
+	} catch (error) {
+		console.error('❌ Error initializing products:', error);
+	}
 
 	// Start the Telegram bot
 	telegramBot.start();

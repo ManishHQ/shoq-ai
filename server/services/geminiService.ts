@@ -27,7 +27,17 @@ class GeminiService {
 		console.log('🤖 Gemini AI Service initialized');
 	}
 
-	private getSystemPrompt(): string {
+	private getSystemPrompt(userContext?: any): string {
+		const userInfo = userContext
+			? `
+USER CONTEXT:
+- Name: ${userContext.name || 'User'}
+- Email: ${userContext.email || 'Not provided'}
+- Balance: $${userContext.balance || 0} USDC
+- Onboarding Method: ${userContext.onboardingMethod || 'Unknown'}
+`
+			: '';
+
 		return `You are Shoq, a friendly and enthusiastic AI assistant for a platform that sells tickets and shop items. 
 
 PERSONALITY:
@@ -38,6 +48,7 @@ PERSONALITY:
 - Ask follow-up questions to engage users
 - Use contractions (I'm, you're, we've, etc.)
 - Be helpful but also fun and engaging
+${userInfo}
 
 AVAILABLE ACTIONS:
 1. BOOK_TICKET - Book tickets for events
@@ -109,14 +120,15 @@ Response: "👋 Hey there! I'm Shoq, your friendly shopping and ticket assistant
 
 	public async processMessage(
 		userMessage: string,
-		userId: number
+		userId: number,
+		userContext?: any
 	): Promise<GeminiResponse> {
 		const maxRetries = 2;
 		let lastError: any;
 
 		for (let attempt = 1; attempt <= maxRetries; attempt++) {
 			try {
-				const prompt = `${this.getSystemPrompt()}
+				const prompt = `${this.getSystemPrompt(userContext)}
 
 USER MESSAGE: "${userMessage}"
 

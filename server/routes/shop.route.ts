@@ -1,123 +1,31 @@
 import express, { Request, Response, RequestHandler } from 'express';
+import productService from '../services/productService.js';
 
 const router = express.Router();
 
-// Hardcoded shop items data
-const SHOP_ITEMS = [
-	{
-		id: 1,
-		name: 'T-Shirt',
-		price: 20,
-		category: 'Clothing',
-		available: true,
-		description: 'Comfortable cotton t-shirt',
-		stock: 50,
-		image: 'https://via.placeholder.com/300x300?text=T-Shirt',
-	},
-	{
-		id: 2,
-		name: 'Coffee Mug',
-		price: 8,
-		category: 'Home',
-		available: true,
-		description: 'Ceramic coffee mug',
-		stock: 100,
-		image: 'https://via.placeholder.com/300x300?text=Coffee+Mug',
-	},
-	{
-		id: 3,
-		name: 'Phone Case',
-		price: 15,
-		category: 'Electronics',
-		available: true,
-		description: 'Protective phone case',
-		stock: 75,
-		image: 'https://via.placeholder.com/300x300?text=Phone+Case',
-	},
-	{
-		id: 4,
-		name: 'Book - Programming Guide',
-		price: 25,
-		category: 'Books',
-		available: false,
-		description: 'Complete programming guide',
-		stock: 0,
-		image: 'https://via.placeholder.com/300x300?text=Book',
-	},
-	{
-		id: 5,
-		name: 'Headphones',
-		price: 80,
-		category: 'Electronics',
-		available: true,
-		description: 'Wireless Bluetooth headphones',
-		stock: 30,
-		image: 'https://via.placeholder.com/300x300?text=Headphones',
-	},
-	{
-		id: 6,
-		name: 'Laptop Stand',
-		price: 35,
-		category: 'Electronics',
-		available: true,
-		description: 'Adjustable laptop stand',
-		stock: 25,
-		image: 'https://via.placeholder.com/300x300?text=Laptop+Stand',
-	},
-	{
-		id: 7,
-		name: 'Water Bottle',
-		price: 12,
-		category: 'Home',
-		available: true,
-		description: 'Stainless steel water bottle',
-		stock: 60,
-		image: 'https://via.placeholder.com/300x300?text=Water+Bottle',
-	},
-	{
-		id: 8,
-		name: 'Notebook',
-		price: 5,
-		category: 'Office',
-		available: true,
-		description: 'Spiral-bound notebook',
-		stock: 200,
-		image: 'https://via.placeholder.com/300x300?text=Notebook',
-	},
-	{
-		id: 9,
-		name: 'Wireless Mouse',
-		price: 25,
-		category: 'Electronics',
-		available: true,
-		description: 'Ergonomic wireless mouse',
-		stock: 40,
-		image: 'https://via.placeholder.com/300x300?text=Mouse',
-	},
-	{
-		id: 10,
-		name: 'Desk Lamp',
-		price: 45,
-		category: 'Home',
-		available: true,
-		description: 'LED desk lamp with adjustable brightness',
-		stock: 20,
-		image: 'https://via.placeholder.com/300x300?text=Desk+Lamp',
-	},
-];
-
 // Get all shop items
-const getAllItems: RequestHandler = (req, res) => {
+const getAllItems: RequestHandler = async (req, res): Promise<void> => {
 	try {
+		const result = await productService.getAvailableProducts();
+
+		if (!result.success) {
+			res.status(500).json({
+				status: 'error',
+				message: result.error || 'Failed to fetch shop items',
+			});
+			return;
+		}
+
 		const { category, minPrice, maxPrice, available, sortBy, sortOrder } =
 			req.query;
 
-		let filteredItems = [...SHOP_ITEMS];
+		let filteredItems = result.products || [];
 
 		// Filter by category
 		if (category) {
 			filteredItems = filteredItems.filter(
-				(item) => item.category.toLowerCase() === String(category).toLowerCase()
+				(item: any) =>
+					item.category.toLowerCase() === String(category).toLowerCase()
 			);
 		}
 
@@ -125,27 +33,27 @@ const getAllItems: RequestHandler = (req, res) => {
 		if (available !== undefined) {
 			const isAvailable = available === 'true';
 			filteredItems = filteredItems.filter(
-				(item) => item.available === isAvailable
+				(item: any) => item.inStock === isAvailable
 			);
 		}
 
 		// Filter by price range
 		if (minPrice) {
 			filteredItems = filteredItems.filter(
-				(item) => item.price >= Number(minPrice)
+				(item: any) => item.price >= Number(minPrice)
 			);
 		}
 
 		if (maxPrice) {
 			filteredItems = filteredItems.filter(
-				(item) => item.price <= Number(maxPrice)
+				(item: any) => item.price <= Number(maxPrice)
 			);
 		}
 
 		// Sort items
 		if (sortBy) {
 			const order = sortOrder === 'desc' ? -1 : 1;
-			filteredItems.sort((a, b) => {
+			filteredItems.sort((a: any, b: any) => {
 				if (sortBy === 'price') {
 					return (a.price - b.price) * order;
 				} else if (sortBy === 'name') {
@@ -171,12 +79,12 @@ const getAllItems: RequestHandler = (req, res) => {
 };
 
 // Get item by ID
-const getItemById: RequestHandler = (req, res) => {
+const getItemById: RequestHandler = async (req, res): Promise<void> => {
 	try {
-		const itemId = parseInt(req.params.id);
-		const item = SHOP_ITEMS.find((i) => i.id === itemId);
+		const itemId = req.params.id;
+		const result = await productService.getProductById(itemId);
 
-		if (!item) {
+		if (!result.success || !result.product) {
 			res.status(404).json({
 				status: 'error',
 				message: 'Item not found',
@@ -186,7 +94,7 @@ const getItemById: RequestHandler = (req, res) => {
 
 		res.json({
 			status: 'success',
-			data: { item },
+			data: { item: result.product },
 		});
 	} catch (error) {
 		res.status(500).json({
@@ -196,98 +104,25 @@ const getItemById: RequestHandler = (req, res) => {
 	}
 };
 
-// Purchase an item
-const purchaseItem: RequestHandler = (req, res) => {
-	try {
-		const itemId = parseInt(req.params.id);
-		const {
-			customerName,
-			customerEmail,
-			quantity = 1,
-			shippingAddress,
-		} = req.body;
-
-		const item = SHOP_ITEMS.find((i) => i.id === itemId);
-
-		if (!item) {
-			res.status(404).json({
-				status: 'error',
-				message: 'Item not found',
-			});
-			return;
-		}
-
-		if (!item.available || item.stock < quantity) {
-			res.status(400).json({
-				status: 'error',
-				message: 'Item is not available or insufficient stock',
-			});
-			return;
-		}
-
-		if (!customerName || !customerEmail) {
-			res.status(400).json({
-				status: 'error',
-				message: 'Customer name and email are required',
-			});
-			return;
-		}
-
-		// Simulate purchase process
-		const orderId = Math.floor(Math.random() * 1000000);
-		const totalPrice = item.price * quantity;
-		const shippingCost = totalPrice > 50 ? 0 : 5; // Free shipping over $50
-		const finalTotal = totalPrice + shippingCost;
-
-		const order = {
-			id: orderId,
-			itemId: item.id,
-			itemName: item.name,
-			customerName,
-			customerEmail,
-			quantity,
-			unitPrice: item.price,
-			totalPrice,
-			shippingCost,
-			finalTotal,
-			shippingAddress,
-			status: 'confirmed',
-			orderDate: new Date().toISOString(),
-			estimatedDelivery: new Date(
-				Date.now() + 7 * 24 * 60 * 60 * 1000
-			).toISOString(), // 7 days from now
-		};
-
-		res.status(201).json({
-			status: 'success',
-			message: 'Purchase completed successfully',
-			data: { order },
-		});
-	} catch (error) {
-		res.status(500).json({
-			status: 'error',
-			message: 'Failed to process purchase',
-		});
-	}
-};
-
 // Search items
-const searchItems: RequestHandler = (req, res) => {
+const searchItems: RequestHandler = async (req, res): Promise<void> => {
 	try {
-		const query = req.params.query.toLowerCase();
+		const query = req.params.query;
+		const result = await productService.searchProducts(query);
 
-		const searchResults = SHOP_ITEMS.filter(
-			(item) =>
-				item.name.toLowerCase().includes(query) ||
-				item.description.toLowerCase().includes(query) ||
-				item.category.toLowerCase().includes(query)
-		);
+		if (!result.success) {
+			res.status(500).json({
+				status: 'error',
+				message: result.error || 'Failed to search items',
+			});
+			return;
+		}
 
 		res.json({
 			status: 'success',
 			data: {
-				items: searchResults,
-				total: searchResults.length,
+				items: result.products || [],
+				total: result.products?.length || 0,
 				query,
 			},
 		});
@@ -300,15 +135,36 @@ const searchItems: RequestHandler = (req, res) => {
 };
 
 // Get categories
-const getCategories: RequestHandler = (req, res) => {
+const getCategories: RequestHandler = async (req, res): Promise<void> => {
 	try {
-		const categories = [
-			{ id: 1, name: 'Clothing', count: 1 },
-			{ id: 2, name: 'Home', count: 3 },
-			{ id: 3, name: 'Electronics', count: 4 },
-			{ id: 4, name: 'Books', count: 1 },
-			{ id: 5, name: 'Office', count: 1 },
-		];
+		const result = await productService.getAvailableProducts();
+
+		if (!result.success) {
+			res.status(500).json({
+				status: 'error',
+				message: 'Failed to fetch categories',
+			});
+			return;
+		}
+
+		// Extract unique categories from products
+		const categoriesMap = new Map();
+		result.products?.forEach((product: any) => {
+			const category = product.category;
+			if (categoriesMap.has(category)) {
+				categoriesMap.set(category, categoriesMap.get(category) + 1);
+			} else {
+				categoriesMap.set(category, 1);
+			}
+		});
+
+		const categories = Array.from(categoriesMap.entries()).map(
+			([name, count], id) => ({
+				id: id + 1,
+				name,
+				count,
+			})
+		);
 
 		res.json({
 			status: 'success',
@@ -323,17 +179,23 @@ const getCategories: RequestHandler = (req, res) => {
 };
 
 // Get featured items
-const getFeaturedItems: RequestHandler = (req, res) => {
+const getFeaturedItems: RequestHandler = async (req, res): Promise<void> => {
 	try {
-		const featuredItems = SHOP_ITEMS.filter(
-			(item) => item.stock > 20 && item.available
-		);
+		const result = await productService.getFeaturedProducts(5);
+
+		if (!result.success) {
+			res.status(500).json({
+				status: 'error',
+				message: 'Failed to fetch featured items',
+			});
+			return;
+		}
 
 		res.json({
 			status: 'success',
 			data: {
-				items: featuredItems,
-				total: featuredItems.length,
+				items: result.products || [],
+				total: result.products?.length || 0,
 			},
 		});
 	} catch (error) {
@@ -345,12 +207,20 @@ const getFeaturedItems: RequestHandler = (req, res) => {
 };
 
 // Get items by category
-const getItemsByCategory: RequestHandler = (req, res) => {
+const getItemsByCategory: RequestHandler = async (req, res): Promise<void> => {
 	try {
 		const category = req.params.category.toLowerCase();
-		const categoryItems = SHOP_ITEMS.filter(
-			(item) => item.category.toLowerCase() === category && item.available
-		);
+		const result = await productService.getProductsByCategory(category);
+
+		if (!result.success) {
+			res.status(500).json({
+				status: 'error',
+				message: 'Failed to fetch category items',
+			});
+			return;
+		}
+
+		const categoryItems = result.products || [];
 
 		if (categoryItems.length === 0) {
 			res.status(404).json({
@@ -376,40 +246,44 @@ const getItemsByCategory: RequestHandler = (req, res) => {
 	}
 };
 
-// Create new item (Admin)
-const createItem: RequestHandler = (req, res) => {
+// Admin: Create new item
+const createItem: RequestHandler = async (req, res): Promise<void> => {
 	try {
 		const { name, price, category, description, stock, image } = req.body;
 
+		// Validate required fields
 		if (!name || !price || !category || !description) {
 			res.status(400).json({
 				status: 'error',
-				message: 'Name, price, category, and description are required',
+				message: 'Missing required fields: name, price, category, description',
 			});
 			return;
 		}
 
-		const newId = Math.max(...SHOP_ITEMS.map(item => item.id)) + 1;
-		
-		const newItem = {
-			id: newId,
+		const result = await productService.createProduct({
 			name,
-			price: Number(price),
-			category,
-			available: true,
+			price: parseFloat(price),
+			category: category.toLowerCase(),
 			description,
-			stock: Number(stock) || 0,
-			image: image || `https://via.placeholder.com/300x300?text=${encodeURIComponent(name)}`,
-		};
+			stockQuantity: parseInt(stock) || 0,
+			imageUrl: image || '',
+		});
 
-		SHOP_ITEMS.push(newItem);
+		if (!result.success) {
+			res.status(500).json({
+				status: 'error',
+				message: result.error || 'Failed to create item',
+			});
+			return;
+		}
 
 		res.status(201).json({
 			status: 'success',
 			message: 'Item created successfully',
-			data: { item: newItem },
+			data: { item: result.product },
 		});
 	} catch (error) {
+		console.error('Error creating item:', error);
 		res.status(500).json({
 			status: 'error',
 			message: 'Failed to create item',
@@ -417,41 +291,45 @@ const createItem: RequestHandler = (req, res) => {
 	}
 };
 
-// Update item (Admin)
-const updateItem: RequestHandler = (req, res) => {
+// Admin: Update item
+const updateItem: RequestHandler = async (req, res): Promise<void> => {
 	try {
-		const itemId = parseInt(req.params.id);
-		const { name, price, category, description, stock, image, available } = req.body;
+		const itemId = req.params.id;
+		const { name, price, category, description, stock, image } = req.body;
 
-		const itemIndex = SHOP_ITEMS.findIndex(item => item.id === itemId);
-
-		if (itemIndex === -1) {
-			res.status(404).json({
+		// Validate required fields
+		if (!name || !price || !category || !description) {
+			res.status(400).json({
 				status: 'error',
-				message: 'Item not found',
+				message: 'Missing required fields: name, price, category, description',
 			});
 			return;
 		}
 
-		const updatedItem = {
-			...SHOP_ITEMS[itemIndex],
-			...(name && { name }),
-			...(price !== undefined && { price: Number(price) }),
-			...(category && { category }),
-			...(description && { description }),
-			...(stock !== undefined && { stock: Number(stock) }),
-			...(image && { image }),
-			...(available !== undefined && { available: Boolean(available) }),
-		};
+		const result = await productService.updateProduct(itemId, {
+			name,
+			price: parseFloat(price),
+			category: category.toLowerCase(),
+			description,
+			stockQuantity: parseInt(stock) || 0,
+			imageUrl: image || '',
+		});
 
-		SHOP_ITEMS[itemIndex] = updatedItem;
+		if (!result.success) {
+			res.status(500).json({
+				status: 'error',
+				message: result.error || 'Failed to update item',
+			});
+			return;
+		}
 
 		res.json({
 			status: 'success',
 			message: 'Item updated successfully',
-			data: { item: updatedItem },
+			data: { item: result.product },
 		});
 	} catch (error) {
+		console.error('Error updating item:', error);
 		res.status(500).json({
 			status: 'error',
 			message: 'Failed to update item',
@@ -459,28 +337,27 @@ const updateItem: RequestHandler = (req, res) => {
 	}
 };
 
-// Delete item (Admin)
-const deleteItem: RequestHandler = (req, res) => {
+// Admin: Delete item
+const deleteItem: RequestHandler = async (req, res): Promise<void> => {
 	try {
-		const itemId = parseInt(req.params.id);
-		const itemIndex = SHOP_ITEMS.findIndex(item => item.id === itemId);
+		const itemId = req.params.id;
 
-		if (itemIndex === -1) {
-			res.status(404).json({
+		const result = await productService.deleteProduct(itemId);
+
+		if (!result.success) {
+			res.status(500).json({
 				status: 'error',
-				message: 'Item not found',
+				message: result.error || 'Failed to delete item',
 			});
 			return;
 		}
 
-		const deletedItem = SHOP_ITEMS.splice(itemIndex, 1)[0];
-
 		res.json({
 			status: 'success',
 			message: 'Item deleted successfully',
-			data: { item: deletedItem },
 		});
 	} catch (error) {
+		console.error('Error deleting item:', error);
 		res.status(500).json({
 			status: 'error',
 			message: 'Failed to delete item',
@@ -491,7 +368,6 @@ const deleteItem: RequestHandler = (req, res) => {
 // Routes
 router.get('/', getAllItems);
 router.get('/item/:id', getItemById);
-router.post('/item/:id/purchase', purchaseItem);
 router.get('/search/:query', searchItems);
 router.get('/categories', getCategories);
 router.get('/featured', getFeaturedItems);

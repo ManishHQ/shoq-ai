@@ -1,0 +1,36 @@
+{
+	"name": "hedera-mcp-server",
+	"version": "0.1.0",
+	"description": "MCP Server for Claude with Hedera blockchain integration",
+	"type": "module",
+	"main": "hedera-mcp-server.js",
+	"bin": {
+		"hedera-mcp-server": "./hedera-mcp-server.js"
+	},
+	"scripts": {
+		"build": "tsc",
+		"start": "node hedera-mcp-server.js",
+		"dev": "tsx hedera-mcp-server.ts"
+	},
+	"dependencies": {
+		"@modelcontextprotocol/sdk": "^0.4.0",
+		"@hashgraph/sdk": "^2.49.0",
+		"axios": "^1.6.0",
+		"dotenv": "^16.3.1"
+	},
+	"devDependencies": {
+		"@types/node": "^20.0.0",
+		"typescript": "^5.0.0",
+		"tsx": "^4.0.0"
+	},
+	"keywords": [
+		"mcp",
+		"claude",
+		"hedera",
+		"blockchain",
+		"usdc",
+		"verification"
+	],
+	"author": "Shoq Team",
+	"license": "MIT"
+}

@@ -1,0 +1,16 @@
+{
+	"mcpServers": {
+		"hedera-verification": {
+			"command": "node",
+			"args": [
+				"/Users/beyond/Desktop/projects/shoq/app/server/mcp/hedera-mcp-server.js"
+			],
+			"env": {
+				"HEDERA_NETWORK": "testnet",
+				"HEDERA_USDC_TOKEN_ID": "0.0.6531261",
+				"AI_WALLET_ADDRESS": "0.0.6494628",
+				"OPERATOR_ADDRESS": "0.0.6494628"
+			}
+		}
+	}
+}

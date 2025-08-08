@@ -8,6 +8,7 @@ import {
 	Status,
 	TransactionReceiptQuery,
 	TransactionResponse,
+	TokenAssociateTransaction,
 } from '@hashgraph/sdk';
 
 export interface TransferRequest {
@@ -33,7 +34,8 @@ export interface AccountBalance {
 
 class USDCService {
 	private client: Client | null = null;
-	private readonly defaultUSDCTokenId = '0.0.6528760'; // Replace with actual USDC testnet token ID or use createMockUSDC to create one
+	private readonly defaultUSDCTokenId =
+		process.env.HEDERA_USDC_TOKEN_ID || '0.0.6528760'; // USDC testnet token ID from environment
 
 	/**
 	 * Initialize the Hedera client
@@ -74,10 +76,13 @@ class USDCService {
 				request.tokenId || this.defaultUSDCTokenId
 			);
 
+			// convert amount to decimals
+			const amountInDecimals = request.amount * 1000000;
+
 			// Create transfer transaction
 			const transferTx = new TransferTransaction()
-				.addTokenTransfer(tokenId, fromAccount, -request.amount)
-				.addTokenTransfer(tokenId, toAccount, request.amount)
+				.addTokenTransfer(tokenId, fromAccount, -amountInDecimals)
+				.addTokenTransfer(tokenId, toAccount, amountInDecimals)
 				.setTransactionMemo(request.memo || 'USDC Transfer')
 				.freezeWith(client);
 
@@ -202,6 +207,61 @@ class USDCService {
 			throw new Error(
 				`Failed to get transaction details: ${error instanceof Error ? error.message : 'Unknown error'}`
 			);
+		}
+	}
+
+	/**
+	 * Associate an account with a token
+	 */
+	async associateToken(
+		accountId: string,
+		tokenId?: string
+	): Promise<TransferResult> {
+		try {
+			const client = await this.initializeClient();
+
+			const account = AccountId.fromString(accountId);
+			const token = TokenId.fromString(tokenId || this.defaultUSDCTokenId);
+
+			// Create token associate transaction
+			const associateTx = new TokenAssociateTransaction()
+				.setAccountId(account)
+				.setTokenIds([token])
+				.freezeWith(client);
+
+			// Sign the transaction with the account's private key
+			// Note: In a real application, you'd need the account's private key
+			// For now, we'll use the operator key (you'll need to modify this)
+			const signedTx = await associateTx.sign(
+				PrivateKey.fromStringECDSA(process.env.OPERATOR_KEY!)
+			);
+
+			// Submit the transaction
+			const response: TransactionResponse = await signedTx.execute(client);
+
+			// Get the receipt
+			const receipt = await new TransactionReceiptQuery()
+				.setTransactionId(response.transactionId)
+				.execute(client);
+
+			if (receipt.status === Status.Success) {
+				return {
+					success: true,
+					transactionId: response.transactionId.toString(),
+					receipt: receipt,
+				};
+			} else {
+				return {
+					success: false,
+					error: `Token association failed with status: ${receipt.status}`,
+				};
+			}
+		} catch (error) {
+			return {
+				success: false,
+				error:
+					error instanceof Error ? error.message : 'Unknown error occurred',
+			};
 		}
 	}
 }

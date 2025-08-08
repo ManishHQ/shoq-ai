@@ -25,7 +25,18 @@ export default function AdminPage() {
 			const data = await response.json();
 
 			if (data.status === 'success') {
-				setProducts(data.data.items);
+				// Map backend data to frontend format
+				const mappedProducts = data.data.items.map((item: any) => ({
+					id: item.productId || item._id,
+					name: item.name,
+					price: item.price,
+					category: item.category,
+					description: item.description,
+					stock: item.stockQuantity || 0,
+					image: item.imageUrl || item.images?.[0] || '',
+					available: item.inStock || false,
+				}));
+				setProducts(mappedProducts);
 			}
 		} catch (error) {
 			console.error('Error fetching products:', error);

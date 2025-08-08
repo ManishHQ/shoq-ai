@@ -1,1 +1,1 @@
-web: npm run start:mcp-http
+web: npm start

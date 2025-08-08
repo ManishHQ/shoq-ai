@@ -1,10 +1,12 @@
 import Order from '../models/order.model.js';
 import User from '../models/user.model.js';
-import { sendEmail } from '../utils/sendEmail.js';
+import Product from '../models/product.model.js';
+import emailService from './emailService.js';
+import { usdcService } from './usdcService.js';
 
 export interface OrderRequest {
 	chatId: number;
-	item: string;
+	productId: string;
 	quantity: number;
 	totalPrice: number;
 }
@@ -14,6 +16,7 @@ export interface OrderResult {
 	message: string;
 	order?: any;
 	error?: string;
+	transactionHash?: string;
 }
 
 class OrderService {
@@ -28,7 +31,17 @@ class OrderService {
 				return {
 					success: false,
 					message: '❌ User not found. Please use /start to register.',
-					error: 'User not found'
+					error: 'User not found',
+				};
+			}
+
+			// Get product
+			const product = await Product.findOne({ productId: request.productId });
+			if (!product) {
+				return {
+					success: false,
+					message: '❌ Product not found.',
+					error: 'Product not found',
 				};
 			}
 
@@ -37,7 +50,16 @@ class OrderService {
 				return {
 					success: false,
 					message: `❌ Insufficient balance. You need $${request.totalPrice} but have $${user.balance}. Please make a deposit first.`,
-					error: 'Insufficient balance'
+					error: 'Insufficient balance',
+				};
+			}
+
+			// Check if product is in stock
+			if (!product.inStock || product.stockQuantity < request.quantity) {
+				return {
+					success: false,
+					message: `❌ Product is out of stock or insufficient quantity.`,
+					error: 'Product out of stock',
 				};
 			}
 
@@ -48,33 +70,85 @@ class OrderService {
 			const order = new Order({
 				orderId,
 				userId: user._id,
-				item: request.item,
-				quantity: request.quantity,
+				items: [
+					{
+						productId: product.productId,
+						name: product.name,
+						price: product.price,
+						quantity: request.quantity,
+					},
+				],
 				totalPrice: request.totalPrice,
-				status: 'confirmed',
+				status: 'pending',
 			});
 
+			await order.save();
+
+			// Transfer USDC tokens to shop owner
+			const shopOwnerAddress = process.env.SHOP_OWNER_ADDRESS;
+			if (!shopOwnerAddress) {
+				return {
+					success: false,
+					message: '❌ Shop owner address not configured.',
+					error: 'Shop owner address not configured',
+				};
+			}
+
+			// Perform real USDC transfer to shop owner
+			console.log(
+				`💰 Initiating USDC transfer: ${request.totalPrice} USDC from ${user.hederaAccountId || process.env.OPERATOR_ADDRESS!} to ${shopOwnerAddress}`
+			);
+			const transferResult = await usdcService.transferTokens({
+				fromAccountId: user.hederaAccountId || process.env.OPERATOR_ADDRESS!,
+				toAccountId: shopOwnerAddress,
+				amount: request.totalPrice,
+				memo: `Order #${orderId} - ${product.name}`,
+			});
+
+			if (!transferResult.success) {
+				// If transfer fails, delete the order and return error
+				await Order.deleteOne({ _id: order._id });
+				return {
+					success: false,
+					message: `❌ Payment failed: ${transferResult.error}`,
+					error: transferResult.error,
+				};
+			}
+
+			// Update order with transaction hash and confirm status
+			console.log(
+				`✅ USDC transfer successful! Transaction ID: ${transferResult.transactionId}`
+			);
+			order.transactionHash = transferResult.transactionId;
+			order.status = 'confirmed';
 			await order.save();
 
 			// Deduct balance from user
 			user.balance -= request.totalPrice;
 			await user.save();
 
+			// Update product stock
+			product.stockQuantity -= request.quantity;
+			if (product.stockQuantity <= 0) {
+				product.inStock = false;
+			}
+			await product.save();
+
 			// Send confirmation emails
-			await this.sendOrderEmails(user, order);
+			await this.sendOrderEmails(user, order, product);
 
 			return {
 				success: true,
 				message: `✅ Order confirmed! Order ID: #${orderId}`,
-				order: order
+				order: order,
+				transactionHash: transferResult.transactionId,
 			};
-
 		} catch (error) {
 			console.error('Error creating order:', error);
 			return {
 				success: false,
 				message: '❌ Error processing order. Please try again.',
-				error: error instanceof Error ? error.message : 'Unknown error'
+				error: error instanceof Error ? error.message : 'Unknown error',
 			};
 		}
 	}
@@ -88,6 +162,19 @@ class OrderService {
 			return order;
 		} catch (error) {
 			console.error('Error getting order:', error);
+			return null;
+		}
+	}
+
+	/**
+	 * Get order by MongoDB _id
+	 */
+	async getOrderById(id: string): Promise<any | null> {
+		try {
+			const order = await Order.findById(id).populate('userId');
+			return order;
+		} catch (error) {
+			console.error('Error getting order by ID:', error);
 			return null;
 		}
 	}
@@ -116,7 +203,10 @@ class OrderService {
 	/**
 	 * Update order status
 	 */
-	async updateOrderStatus(orderId: string, status: 'confirmed' | 'pending' | 'cancelled' | 'delivered'): Promise<boolean> {
+	async updateOrderStatus(
+		orderId: string,
+		status: 'confirmed' | 'pending' | 'cancelled' | 'delivered'
+	): Promise<boolean> {
 		try {
 			const result = await Order.updateOne({ orderId }, { status });
 			return result.modifiedCount > 0;
@@ -131,64 +221,61 @@ class OrderService {
 	 */
 	private generateOrderId(): string {
 		const timestamp = Date.now().toString();
-		const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+		const random = Math.floor(Math.random() * 1000)
+			.toString()
+			.padStart(3, '0');
 		return timestamp.slice(-6) + random;
 	}
 
 	/**
-	 * Send order confirmation emails
+	 * Send order confirmation emails using AI-powered email service
 	 */
-	private async sendOrderEmails(user: any, order: any): Promise<void> {
+	private async sendOrderEmails(
+		user: any,
+		order: any,
+		product: any
+	): Promise<void> {
 		try {
-			// Customer email (if email exists)
-			if (user.email) {
-				const customerEmailHtml = `
-					<h2>Order Confirmation</h2>
-					<p>Hi ${user.name},</p>
-					<p>Your order has been confirmed!</p>
-					<div style="border: 1px solid #ddd; padding: 20px; margin: 20px 0;">
-						<h3>Order Details</h3>
-						<p><strong>Order ID:</strong> #${order.orderId}</p>
-						<p><strong>Item:</strong> ${order.item}</p>
-						<p><strong>Quantity:</strong> ${order.quantity}</p>
-						<p><strong>Total:</strong> $${order.totalPrice}</p>
-						<p><strong>Status:</strong> ${order.status}</p>
-					</div>
-					<p>You can view your order at: <a href="${process.env.FRONTEND_URL}/order/${order.orderId}">View Order</a></p>
-					<p>Thank you for using Shoq!</p>
-				`;
+			// Prepare email data
+			const emailData = {
+				user: {
+					name: user.name,
+					email: user.email,
+					username: user.username,
+					chatId: user.chatId,
+				},
+				order: {
+					orderId: order.orderId,
+					_id: order._id,
+					items: order.items,
+					totalPrice: order.totalPrice,
+					status: order.status,
+					transactionHash: order.transactionHash,
+					createdAt: order.createdAt,
+				},
+				product: {
+					name: product.name,
+					description: product.description,
+					category: product.category,
+					image: product.images?.[0],
+				},
+			};
 
-				await sendEmail({
-					to: user.email,
-					subject: `Order Confirmation #${order.orderId}`,
-					html: customerEmailHtml,
-				});
+			// Send customer email (if email exists)
+			if (user.email) {
+				const customerEmailSent =
+					await emailService.sendOrderConfirmationEmail(emailData);
+				if (!customerEmailSent) {
+					console.log('⚠️ Customer email not sent - continuing with order');
+				}
 			}
 
-			// Fulfillment email to Shoq staff
-			const fulfillmentEmailHtml = `
-				<h2>New Order for Fulfillment</h2>
-				<div style="border: 1px solid #ddd; padding: 20px; margin: 20px 0;">
-					<h3>Order Details</h3>
-					<p><strong>Order ID:</strong> #${order.orderId}</p>
-					<p><strong>Customer:</strong> ${user.name} (@${user.username})</p>
-					<p><strong>Chat ID:</strong> ${user.chatId}</p>
-					<p><strong>Item:</strong> ${order.item}</p>
-					<p><strong>Quantity:</strong> ${order.quantity}</p>
-					<p><strong>Total:</strong> $${order.totalPrice}</p>
-					<p><strong>Status:</strong> ${order.status}</p>
-					<p><strong>Order Date:</strong> ${order.createdAt}</p>
-				</div>
-				<p><strong>Action Required:</strong> Please fulfill this order and update the status accordingly.</p>
-			`;
-
-			const fulfillmentEmail = process.env.FULFILLMENT_EMAIL || 'orders@shoq.me';
-			await sendEmail({
-				to: fulfillmentEmail,
-				subject: `New Order #${order.orderId} - Action Required`,
-				html: fulfillmentEmailHtml,
-			});
-
+			// Send fulfillment email to staff
+			const fulfillmentEmailSent =
+				await emailService.sendFulfillmentEmail(emailData);
+			if (!fulfillmentEmailSent) {
+				console.log('⚠️ Fulfillment email not sent - continuing with order');
+			}
 		} catch (error) {
 			console.error('Error sending order emails:', error);
 			// Don't throw error, as order was already created successfully
@@ -205,7 +292,7 @@ class OrderService {
 				return {
 					success: false,
 					message: '❌ User not found.',
-					error: 'User not found'
+					error: 'User not found',
 				};
 			}
 
@@ -214,7 +301,7 @@ class OrderService {
 				return {
 					success: false,
 					message: '❌ Order not found.',
-					error: 'Order not found'
+					error: 'Order not found',
 				};
 			}
 
@@ -222,7 +309,7 @@ class OrderService {
 				return {
 					success: false,
 					message: '❌ Cannot cancel a delivered order.',
-					error: 'Order already delivered'
+					error: 'Order already delivered',
 				};
 			}
 
@@ -237,15 +324,14 @@ class OrderService {
 			return {
 				success: true,
 				message: `✅ Order #${orderId} has been cancelled. $${order.totalPrice} has been refunded to your balance.`,
-				order: order
+				order: order,
 			};
-
 		} catch (error) {
 			console.error('Error cancelling order:', error);
 			return {
 				success: false,
 				message: '❌ Error cancelling order. Please try again.',
-				error: error instanceof Error ? error.message : 'Unknown error'
+				error: error instanceof Error ? error.message : 'Unknown error',
 			};
 		}
 	}

@@ -20,154 +20,38 @@ class ActionHandler {
 		{ id: 6, name: 'Opera - La Traviata', price: 75, available: true },
 	];
 
-	private shopItems = [
-		{
-			id: 1,
-			name: 'T-Shirt',
-			price: 20,
-			category: 'Clothing',
-			available: true,
-			description: 'Comfortable cotton T-shirt, perfect for everyday wear',
-			imageUrl:
-				'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=400',
-			colors: ['White', 'Black', 'Blue', 'Gray'],
-			sizes: ['S', 'M', 'L', 'XL'],
-			rating: 4.5,
-			reviews: 128,
-		},
-		{
-			id: 2,
-			name: 'Coffee Mug',
-			price: 8,
-			category: 'Home',
-			available: true,
-			description: 'Ceramic coffee mug, perfect for your morning brew',
-			imageUrl:
-				'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=400',
-			colors: ['White', 'Black', 'Red'],
-			rating: 4.2,
-			reviews: 89,
-		},
-		{
-			id: 3,
-			name: 'Phone Case',
-			price: 15,
-			category: 'Electronics',
-			available: true,
-			description: 'Protective phone case with shock absorption',
-			imageUrl:
-				'https://images.unsplash.com/photo-1603313011952-0116c1a4b6c4?w=400',
-			colors: ['Clear', 'Black', 'Blue', 'Pink'],
-			compatibility: ['iPhone 14', 'iPhone 13', 'Samsung Galaxy'],
-			rating: 4.3,
-			reviews: 156,
-		},
-		{
-			id: 4,
-			name: 'Book - Programming Guide',
-			price: 25,
-			category: 'Books',
-			available: false,
-			description: 'Comprehensive programming guide for beginners',
-			imageUrl:
-				'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=400',
-			author: 'John Doe',
-			pages: 350,
-			rating: 4.7,
-			reviews: 203,
-		},
-		{
-			id: 5,
-			name: 'Headphones',
-			price: 80,
-			category: 'Electronics',
-			available: true,
-			description: 'Wireless noise-canceling headphones with premium sound',
-			imageUrl:
-				'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=400',
-			colors: ['Black', 'White', 'Blue'],
-			features: ['Bluetooth 5.0', 'Noise Canceling', '30h Battery'],
-			rating: 4.8,
-			reviews: 342,
-		},
-		{
-			id: 6,
-			name: 'Laptop Stand',
-			price: 35,
-			category: 'Electronics',
-			available: true,
-			description: 'Adjustable laptop stand for better ergonomics',
-			imageUrl:
-				'https://images.unsplash.com/photo-1586953208448-b95a79798f07?w=400',
-			colors: ['Silver', 'Black'],
-			material: 'Aluminum',
-			rating: 4.4,
-			reviews: 67,
-		},
-		{
-			id: 7,
-			name: 'Water Bottle',
-			price: 12,
-			category: 'Home',
-			available: true,
-			description:
-				'Stainless steel water bottle, keeps drinks cold for 24 hours',
-			imageUrl:
-				'https://images.unsplash.com/photo-1602143407151-7111542de6e8?w=400',
-			colors: ['Silver', 'Black', 'Blue', 'Pink'],
-			capacity: '32oz',
-			rating: 4.6,
-			reviews: 178,
-		},
-		{
-			id: 8,
-			name: 'Notebook',
-			price: 5,
-			category: 'Office',
-			available: true,
-			description: 'High-quality notebook with lined pages',
-			imageUrl:
-				'https://images.unsplash.com/photo-1531346680769-a1d79b57de5c?w=400',
-			colors: ['Black', 'Blue', 'Red'],
-			pages: 100,
-			rating: 4.1,
-			reviews: 45,
-		},
-		{
-			id: 9,
-			name: 'Wireless Mouse',
-			price: 25,
-			category: 'Electronics',
-			available: true,
-			description: 'Ergonomic wireless mouse with precision tracking',
-			imageUrl:
-				'https://images.unsplash.com/photo-1527864550417-7fd91fc51a46?w=400',
-			colors: ['Black', 'White', 'Gray'],
-			connectivity: 'Bluetooth/USB',
-			rating: 4.3,
-			reviews: 92,
-		},
-		{
-			id: 10,
-			name: 'Desk Lamp',
-			price: 45,
-			category: 'Home',
-			available: true,
-			description:
-				'LED desk lamp with adjustable brightness and color temperature',
-			imageUrl:
-				'https://images.unsplash.com/photo-1507473885765-e6ed057f782c?w=400',
-			colors: ['White', 'Black'],
-			features: ['Touch Control', '3 Color Modes', 'USB Charging'],
-			rating: 4.5,
-			reviews: 134,
-		},
-	];
+	// Import product service for dynamic product management
+	private async getProductService() {
+		return (await import('./productService.js')).default;
+	}
 
 	public async executeAction(
 		actionRequest: ActionRequest,
 		userId: number
 	): Promise<ActionResult> {
+		// Get user information including email for AI context
+		const User = (await import('../models/user.model.js')).default;
+		const user = await User.findOne({ chatId: userId });
+
+		if (!user) {
+			return {
+				success: false,
+				message: 'User not found. Please start the bot with /start',
+			};
+		}
+
+		// Add user context to action request for AI processing
+		const enhancedRequest = {
+			...actionRequest,
+			userContext: {
+				userId: user._id,
+				chatId: user.chatId,
+				email: user.email,
+				name: user.name,
+				balance: user.balance,
+				onboardingMethod: user.onboardingMethod,
+			},
+		};
 		const { action, parameters } = actionRequest;
 
 		switch (action) {
@@ -233,7 +117,7 @@ class ActionHandler {
 		// Import User model to check balance
 		const User = (await import('../models/user.model.js')).default;
 		const user = await User.findOne({ chatId: userId });
-		
+
 		if (!user) {
 			return {
 				success: false,
@@ -269,31 +153,33 @@ ${canAfford ? 'Ready to confirm your booking?' : 'Please make a deposit to book 
 				userId,
 				canAfford,
 				// UI Action suggestions
-				uiActions: canAfford ? [
-					{
-						type: 'button',
-						text: '✅ Confirm Booking',
-						action: 'confirm_booking',
-						ticketId: ticket.id,
-						quantity: quantity,
-					},
-					{
-						type: 'button',
-						text: '❌ Cancel',
-						action: 'cancel_booking',
-					},
-				] : [
-					{
-						type: 'button',
-						text: '💰 Make Deposit',
-						action: 'deposit',
-					},
-					{
-						type: 'button',
-						text: '🎫 Browse Other Tickets',
-						action: 'browse_tickets',
-					},
-				],
+				uiActions: canAfford
+					? [
+							{
+								type: 'button',
+								text: '✅ Confirm Booking',
+								action: 'confirm_booking',
+								ticketId: ticket.id,
+								quantity: quantity,
+							},
+							{
+								type: 'button',
+								text: '❌ Cancel',
+								action: 'cancel_booking',
+							},
+						]
+					: [
+							{
+								type: 'button',
+								text: '💰 Make Deposit',
+								action: 'deposit',
+							},
+							{
+								type: 'button',
+								text: '🎫 Browse Other Tickets',
+								action: 'browse_tickets',
+							},
+						],
 			},
 		};
 	}
@@ -304,17 +190,28 @@ ${canAfford ? 'Ready to confirm your booking?' : 'Please make a deposit to book 
 	): Promise<ActionResult> {
 		const { item, quantity = 1, category } = parameters;
 
-		// Find the item
-		let foundItem = this.shopItems.find(
-			(i) =>
+		// Get product service
+		const productService = await this.getProductService();
+
+		// Search for the item using product service
+		const searchResult = await productService.searchProducts(item);
+		if (!searchResult.success || !searchResult.products) {
+			return {
+				success: false,
+				message: 'Sorry, there was an error searching for products.',
+			};
+		}
+
+		let foundItem = searchResult.products.find(
+			(i: any) =>
 				i.name.toLowerCase().includes(item.toLowerCase()) ||
 				item.toLowerCase().includes(i.name.toLowerCase())
 		);
 
 		// If category is specified, filter by category
 		if (category && !foundItem) {
-			foundItem = this.shopItems.find(
-				(i) =>
+			foundItem = searchResult.products.find(
+				(i: any) =>
 					i.category.toLowerCase() === category.toLowerCase() &&
 					(i.name.toLowerCase().includes(item.toLowerCase()) ||
 						item.toLowerCase().includes(i.name.toLowerCase()))
@@ -322,13 +219,23 @@ ${canAfford ? 'Ready to confirm your booking?' : 'Please make a deposit to book 
 		}
 
 		if (!foundItem) {
+			// Get available products for alternatives
+			const availableResult = await productService.getAvailableProducts();
+			const alternatives =
+				availableResult.success && availableResult.products
+					? availableResult.products
+							.slice(0, 5)
+							.map((p: any) => p.name)
+							.join(', ')
+					: 'various products';
+
 			return {
 				success: false,
-				message: `Oops! 😅 I couldn't find "${item}" in our shop. But we've got some awesome alternatives: ${this.shopItems.map((i) => i.name).join(', ')}`,
+				message: `Oops! 😅 I couldn't find "${item}" in our shop. But we've got some awesome alternatives: ${alternatives}`,
 			};
 		}
 
-		if (!foundItem.available) {
+		if (!foundItem.inStock) {
 			return {
 				success: false,
 				message: `Bummer! 😔 "${foundItem.name}" is out of stock right now. But don't worry, we've got plenty of other great items!`,
@@ -338,7 +245,7 @@ ${canAfford ? 'Ready to confirm your booking?' : 'Please make a deposit to book 
 		// Import User model to check balance
 		const User = (await import('../models/user.model.js')).default;
 		const user = await User.findOne({ chatId: userId });
-		
+
 		if (!user) {
 			return {
 				success: false,
@@ -365,7 +272,7 @@ ${canAfford ? 'Ready to confirm your booking?' : 'Please make a deposit to book 
 
 📂 Category: ${foundItem.category}
 📝 ${foundItem.description}
-⭐ Rating: ${foundItem.rating}/5 (${foundItem.reviews} reviews)
+⭐ Rating: ${foundItem.rating}/5 (${foundItem.reviewCount} reviews)
 
 💰 **Your Balance:** $${user.balance}
 ${canAfford ? `✅ **After Purchase:** $${balanceAfter}` : `❌ **Insufficient Balance** - Need $${finalTotal - user.balance} more`}
@@ -376,7 +283,7 @@ ${canAfford ? 'Ready to confirm your purchase?' : 'Please make a deposit to purc
 			success: true,
 			message: message,
 			data: {
-				itemId: foundItem.id,
+				itemId: foundItem.productId,
 				item: foundItem.name,
 				quantity,
 				totalPrice,
@@ -386,7 +293,7 @@ ${canAfford ? 'Ready to confirm your purchase?' : 'Please make a deposit to purc
 				canAfford,
 				// Rich data for UI building
 				itemDetails: {
-					id: foundItem.id,
+					id: foundItem.productId,
 					name: foundItem.name,
 					price: foundItem.price,
 					category: foundItem.category,
@@ -394,7 +301,7 @@ ${canAfford ? 'Ready to confirm your purchase?' : 'Please make a deposit to purc
 					imageUrl: foundItem.imageUrl,
 					colors: foundItem.colors,
 					rating: foundItem.rating,
-					reviews: foundItem.reviews,
+					reviewCount: foundItem.reviewCount,
 					// Additional properties if they exist
 					...(foundItem.sizes && { sizes: foundItem.sizes }),
 					...(foundItem.features && { features: foundItem.features }),
@@ -410,31 +317,33 @@ ${canAfford ? 'Ready to confirm your purchase?' : 'Please make a deposit to purc
 					}),
 				},
 				// UI Action suggestions
-				uiActions: canAfford ? [
-					{
-						type: 'button',
-						text: '✅ Confirm Purchase',
-						action: 'confirm_purchase',
-						itemId: foundItem.id,
-						quantity: quantity,
-					},
-					{
-						type: 'button',
-						text: '❌ Cancel',
-						action: 'cancel_purchase',
-					},
-				] : [
-					{
-						type: 'button',
-						text: '💰 Make Deposit',
-						action: 'deposit',
-					},
-					{
-						type: 'button',
-						text: '🛍️ Browse Other Items',
-						action: 'browse_items',
-					},
-				],
+				uiActions: canAfford
+					? [
+							{
+								type: 'button',
+								text: '✅ Confirm Purchase',
+								action: 'confirm_purchase',
+								itemId: foundItem.productId,
+								quantity: quantity,
+							},
+							{
+								type: 'button',
+								text: '❌ Cancel',
+								action: 'cancel_purchase',
+							},
+						]
+					: [
+							{
+								type: 'button',
+								text: '💰 Make Deposit',
+								action: 'deposit',
+							},
+							{
+								type: 'button',
+								text: '🛍️ Browse Other Items',
+								action: 'browse_items',
+							},
+						],
 			},
 		};
 	}
@@ -472,29 +381,48 @@ ${canAfford ? 'Ready to confirm your purchase?' : 'Please make a deposit to purc
 	private async searchItems(parameters: any): Promise<ActionResult> {
 		const { query, category } = parameters;
 
-		let results = this.shopItems.filter(
-			(item) =>
-				item.name.toLowerCase().includes(query.toLowerCase()) ||
-				query.toLowerCase().includes(item.name.toLowerCase())
-		);
+		// Get product service
+		const productService = await this.getProductService();
 
+		// Search products
+		const searchResult = await productService.searchProducts(query);
+
+		if (
+			!searchResult.success ||
+			!searchResult.products ||
+			searchResult.products.length === 0
+		) {
+			// Get some available products as fallback
+			const availableResult = await productService.getAvailableProducts();
+			const fallbackItems = availableResult.products?.slice(0, 5) || [];
+			const fallbackNames = fallbackItems.map((i: any) => i.name).join(', ');
+
+			return {
+				success: false,
+				message: `Hmm, I don't see "${query}" in our shop right now 😕 But we've got lots of other cool stuff! Check out: ${fallbackNames}`,
+			};
+		}
+
+		let results = searchResult.products;
+
+		// Filter by category if specified
 		if (category) {
 			results = results.filter(
-				(item) => item.category.toLowerCase() === category.toLowerCase()
+				(item: any) => item.category.toLowerCase() === category.toLowerCase()
 			);
 		}
 
 		if (results.length === 0) {
 			return {
 				success: false,
-				message: `Hmm, I don't see "${query}" in our shop right now 😕 But we've got lots of other cool stuff! Check out: ${this.shopItems.map((i) => i.name).join(', ')}`,
+				message: `No items found in category "${category}" for "${query}". Try searching without a category filter.`,
 			};
 		}
 
 		const itemList = results
 			.map(
-				(i) =>
-					`• ${i.name} - $${i.price} (${i.category})${!i.available ? ' (Not available)' : ''}`
+				(i: any) =>
+					`• ${i.name} - $${i.price} (${i.category})${!i.inStock ? ' (Out of stock)' : ''}`
 			)
 			.join('\n');
 
@@ -519,16 +447,38 @@ ${canAfford ? 'Ready to confirm your purchase?' : 'Please make a deposit to purc
 		}
 
 		if (type === 'items' || type === 'shop') {
-			const itemPrices = this.shopItems
-				.map((i) => `• ${i.name}: $${i.price} (${i.category})`)
-				.join('\n');
-			return {
-				success: true,
-				message: `🛍️ Shop Item Prices:\n\n${itemPrices}`,
-			};
+			// Get product service
+			const productService = await this.getProductService();
+			const availableResult = await productService.getAvailableProducts();
+
+			if (availableResult.success && availableResult.products) {
+				const itemPrices = availableResult.products
+					.map((i: any) => `• ${i.name}: $${i.price} (${i.category})`)
+					.join('\n');
+				return {
+					success: true,
+					message: `🛍️ Shop Item Prices:\n\n${itemPrices}`,
+				};
+			} else {
+				return {
+					success: false,
+					message: '❌ Unable to fetch shop item prices at the moment.',
+				};
+			}
 		}
 
-		const allPrices = `🎫 Tickets:\n${this.tickets.map((t) => `• ${t.name}: $${t.price}`).join('\n')}\n\n🛍️ Shop Items:\n${this.shopItems.map((i) => `• ${i.name}: $${i.price} (${i.category})`).join('\n')}`;
+		// Get product service for all items
+		const productService = await this.getProductService();
+		const availableResult = await productService.getAvailableProducts();
+
+		let itemPrices = 'No items available';
+		if (availableResult.success && availableResult.products) {
+			itemPrices = availableResult.products
+				.map((i: any) => `• ${i.name}: $${i.price} (${i.category})`)
+				.join('\n');
+		}
+
+		const allPrices = `🎫 Tickets:\n${this.tickets.map((t) => `• ${t.name}: $${t.price}`).join('\n')}\n\n🛍️ Shop Items:\n${itemPrices}`;
 
 		return {
 			success: true,
@@ -539,9 +489,21 @@ ${canAfford ? 'Ready to confirm your purchase?' : 'Please make a deposit to purc
 	private async getRecommendations(parameters: any): Promise<ActionResult> {
 		const { preference } = parameters;
 
-		// Simple recommendation logic
+		// Get product service
+		const productService = await this.getProductService();
+		const availableResult = await productService.getAvailableProducts();
+
+		if (!availableResult.success || !availableResult.products) {
+			return {
+				success: false,
+				message: '❌ Unable to fetch recommendations at the moment.',
+			};
+		}
+
+		const availableProducts = availableResult.products;
 		const recommendations = [];
 
+		// Simple recommendation logic based on available products
 		if (
 			preference.toLowerCase().includes('movie') ||
 			preference.toLowerCase().includes('film')
@@ -569,33 +531,40 @@ ${canAfford ? 'Ready to confirm your purchase?' : 'Please make a deposit to purc
 			);
 		}
 
+		// Dynamic recommendations based on available products
 		if (
 			preference.toLowerCase().includes('electronic') ||
 			preference.toLowerCase().includes('tech')
 		) {
-			recommendations.push(
-				'🎧 Headphones ($80) - High-quality audio experience'
+			const electronics = availableProducts.filter(
+				(p: any) => p.category.toLowerCase() === 'electronics'
 			);
-			recommendations.push('💻 Laptop Stand ($35) - Improve your workspace');
+			electronics.slice(0, 2).forEach((p: any) => {
+				recommendations.push(`🎧 ${p.name} ($${p.price}) - ${p.description}`);
+			});
 		}
 
 		if (
 			preference.toLowerCase().includes('home') ||
 			preference.toLowerCase().includes('decor')
 		) {
-			recommendations.push(
-				'🏠 Desk Lamp ($45) - Perfect lighting for your space'
+			const homeItems = availableProducts.filter(
+				(p: any) => p.category.toLowerCase() === 'home'
 			);
-			recommendations.push('☕ Coffee Mug ($8) - Start your day right');
+			homeItems.slice(0, 2).forEach((p: any) => {
+				recommendations.push(`🏠 ${p.name} ($${p.price}) - ${p.description}`);
+			});
 		}
 
 		if (recommendations.length === 0) {
-			recommendations.push(
-				'🎫 Movie Ticket - Avengers ($15) - Great entertainment value'
-			);
-			recommendations.push('👕 T-Shirt ($20) - Comfortable and stylish');
-			recommendations.push('📱 Phone Case ($15) - Protect your device');
-			recommendations.push('☕ Coffee Mug ($8) - Perfect for daily use');
+			// Fallback to popular items
+			const popularItems = availableProducts
+				.sort((a: any, b: any) => b.rating - a.rating)
+				.slice(0, 4);
+
+			popularItems.forEach((p: any) => {
+				recommendations.push(`⭐ ${p.name} ($${p.price}) - ${p.description}`);
+			});
 		}
 
 		return {
@@ -611,13 +580,25 @@ ${canAfford ? 'Ready to confirm your purchase?' : 'Please make a deposit to purc
 	): Promise<ActionResult> {
 		const { itemId, quantity = 1 } = parameters;
 
-		// Find the item
-		const foundItem = this.shopItems.find((i) => i.id === parseInt(itemId));
+		// Get product service
+		const productService = await this.getProductService();
 
-		if (!foundItem || !foundItem.available) {
+		// Find the item by productId (itemId is actually productId in this context)
+		const productResult = await productService.getProductById(itemId);
+
+		if (!productResult.success || !productResult.product) {
 			return {
 				success: false,
 				message: '❌ Item is no longer available.',
+			};
+		}
+
+		const foundItem = productResult.product;
+
+		if (!foundItem.inStock || foundItem.stockQuantity < quantity) {
+			return {
+				success: false,
+				message: '❌ Item is out of stock or insufficient quantity.',
 			};
 		}
 
@@ -631,7 +612,7 @@ ${canAfford ? 'Ready to confirm your purchase?' : 'Please make a deposit to purc
 		// Create actual order in database
 		const orderResult = await orderService.createOrder({
 			chatId: userId,
-			item: foundItem.name,
+			productId: foundItem.productId,
 			quantity,
 			totalPrice: finalTotal,
 		});
@@ -645,7 +626,7 @@ ${canAfford ? 'Ready to confirm your purchase?' : 'Please make a deposit to purc
 
 		return {
 			success: true,
-			message: `🎉 Woo-hoo! Your order is confirmed!\n\n✅ ${quantity}x "${foundItem.name}"\n💰 Total: $${finalTotal} (including $${shippingCost} shipping)\n🛍️ Order ID: #${orderResult.order.orderId}\n\nThanks for shopping with us! 🛍️`,
+			message: `🎉 Woo-hoo! Your order is confirmed!\n\n✅ ${quantity}x "${foundItem.name}"\n💰 Total: $${finalTotal} (including $${shippingCost} shipping)\n🛍️ Order ID: #${orderResult.order.orderId}\n💳 Transaction Hash: ${orderResult.transactionHash}\n\nThanks for shopping with us! 🛍️`,
 			data: {
 				orderId: orderResult.order.orderId,
 				item: foundItem.name,
@@ -654,30 +635,18 @@ ${canAfford ? 'Ready to confirm your purchase?' : 'Please make a deposit to purc
 				shippingCost,
 				finalTotal,
 				userId,
+				transactionHash: orderResult.transactionHash,
 				// Rich data for UI building
 				itemDetails: {
-					id: foundItem.id,
+					id: foundItem.productId,
 					name: foundItem.name,
 					price: foundItem.price,
 					category: foundItem.category,
 					description: foundItem.description,
-					imageUrl: foundItem.imageUrl,
-					colors: foundItem.colors,
+					imageUrl: foundItem.images?.[0] || '',
 					rating: foundItem.rating,
-					reviews: foundItem.reviews,
-					// Additional properties if they exist
-					...(foundItem.sizes && { sizes: foundItem.sizes }),
-					...(foundItem.features && { features: foundItem.features }),
-					...(foundItem.compatibility && {
-						compatibility: foundItem.compatibility,
-					}),
-					...(foundItem.material && { material: foundItem.material }),
-					...(foundItem.capacity && { capacity: foundItem.capacity }),
-					...(foundItem.pages && { pages: foundItem.pages }),
-					...(foundItem.author && { author: foundItem.author }),
-					...(foundItem.connectivity && {
-						connectivity: foundItem.connectivity,
-					}),
+					reviewCount: foundItem.reviewCount,
+					stock: foundItem.stockQuantity,
 				},
 				// UI Action suggestions
 				uiActions: [
@@ -685,13 +654,13 @@ ${canAfford ? 'Ready to confirm your purchase?' : 'Please make a deposit to purc
 						type: 'button',
 						text: 'View Order Details',
 						action: 'view_order',
-						orderId: orderResult.order.orderId,
+						orderId: orderResult.order._id,
 					},
 					{
 						type: 'button',
 						text: 'Track Order',
 						action: 'track_order',
-						orderId: orderResult.order.orderId,
+						orderId: orderResult.order._id,
 					},
 					{
 						type: 'button',
@@ -728,7 +697,7 @@ ${canAfford ? 'Ready to confirm your purchase?' : 'Please make a deposit to purc
 		// Create actual order in database
 		const orderResult = await orderService.createOrder({
 			chatId: userId,
-			item: ticket.name,
+			productId: `TICKET_${ticket.id}`,
 			quantity,
 			totalPrice,
 		});
@@ -755,13 +724,13 @@ ${canAfford ? 'Ready to confirm your purchase?' : 'Please make a deposit to purc
 						type: 'button',
 						text: 'View Order Details',
 						action: 'view_order',
-						orderId: orderResult.order.orderId,
+						orderId: orderResult.order._id,
 					},
 					{
 						type: 'button',
 						text: 'Track Order',
 						action: 'track_order',
-						orderId: orderResult.order.orderId,
+						orderId: orderResult.order._id,
 					},
 				],
 			},

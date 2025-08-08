@@ -6,6 +6,7 @@ import {
 	isLoggedIn,
 } from '../controllers/auth.controller.js';
 import User from '../models/user.model';
+import emailService from '../services/emailService.js';
 
 const router = express.Router();
 
@@ -30,10 +31,29 @@ router.post('/onboard', async (req, res) => {
 		const { walletAddress, email, onboardingMethod, name, chatId } = req.body;
 
 		// Validate required fields based on onboarding method
-		if (!onboardingMethod || !['telegram', 'wallet', 'ai'].includes(onboardingMethod)) {
+		if (
+			!onboardingMethod ||
+			!['telegram', 'wallet', 'ai'].includes(onboardingMethod)
+		) {
 			return res.status(400).json({
 				success: false,
-				message: 'Valid onboarding method is required (telegram, wallet, or ai)',
+				message:
+					'Valid onboarding method is required (telegram, wallet, or ai)',
+			});
+		}
+
+		// Email is now required for all onboarding methods
+		if (!email) {
+			return res.status(400).json({
+				success: false,
+				message: 'Email is required for all onboarding methods',
+			});
+		}
+
+		if (!validateEmail(email)) {
+			return res.status(400).json({
+				success: false,
+				message: 'Invalid email address format',
 			});
 		}
 
@@ -45,25 +65,11 @@ router.post('/onboard', async (req, res) => {
 					message: 'Wallet address is required for wallet onboarding',
 				});
 			}
-			
+
 			if (!validateWalletAddress(walletAddress)) {
 				return res.status(400).json({
 					success: false,
 					message: 'Invalid Ethereum wallet address format',
-				});
-			}
-
-			if (!email) {
-				return res.status(400).json({
-					success: false,
-					message: 'Email is required for wallet onboarding',
-				});
-			}
-
-			if (!validateEmail(email)) {
-				return res.status(400).json({
-					success: false,
-					message: 'Invalid email address format',
 				});
 			}
 		}
@@ -92,7 +98,7 @@ router.post('/onboard', async (req, res) => {
 				existingUser.emailNotifications = true;
 			}
 			if (name) existingUser.name = name;
-			
+
 			await existingUser.save();
 
 			return res.status(200).json({
@@ -137,6 +143,31 @@ router.post('/onboard', async (req, res) => {
 		const newUser = new User(userData);
 		await newUser.save();
 
+		// Send welcome email if user has email
+		if (newUser.email) {
+			try {
+				const welcomeEmailData = {
+					user: {
+						name: newUser.name,
+						email: newUser.email,
+						username: newUser.username,
+						chatId: newUser.chatId,
+					},
+					onboardingMethod: onboardingMethod as 'telegram' | 'wallet' | 'email',
+				};
+
+				const emailSent = await emailService.sendWelcomeEmail(welcomeEmailData);
+				if (emailSent) {
+					console.log(`📧 Welcome email sent to ${newUser.email}`);
+				} else {
+					console.log(`⚠️ Failed to send welcome email to ${newUser.email}`);
+				}
+			} catch (error) {
+				console.error('Error sending welcome email:', error);
+				// Don't fail the onboarding process if email fails
+			}
+		}
+
 		// Generate JWT token
 		const token = newUser.generateToken();
 
@@ -156,7 +187,7 @@ router.post('/onboard', async (req, res) => {
 		});
 	} catch (error: any) {
 		console.error('Onboarding error:', error);
-		
+
 		if (error.code === 11000) {
 			// Duplicate key error
 			const field = Object.keys(error.keyPattern)[0];
@@ -185,7 +216,9 @@ router.get('/profile/:walletAddress', async (req, res) => {
 			});
 		}
 
-		const user = await User.findOne({ walletAddress }).select('-password -otpCode');
+		const user = await User.findOne({ walletAddress }).select(
+			'-password -otpCode'
+		);
 
 		if (!user) {
 			return res.status(404).json({
@@ -328,7 +361,7 @@ router.post('/telegram-user', async (req, res) => {
 				user.username = username;
 				updated = true;
 			}
-			
+
 			if (updated) {
 				await user.save();
 			}
@@ -349,7 +382,10 @@ router.post('/telegram-user', async (req, res) => {
 		}
 
 		// Create new Telegram user
-		const displayName = name || [firstName, lastName].filter(Boolean).join(' ') || `User_${chatId}`;
+		const displayName =
+			name ||
+			[firstName, lastName].filter(Boolean).join(' ') ||
+			`User_${chatId}`;
 		const telegramUsername = username || `tg_${chatId}`;
 
 		const newUser = new User({
@@ -379,7 +415,7 @@ router.post('/telegram-user', async (req, res) => {
 		});
 	} catch (error) {
 		console.error('Telegram user error:', error);
-		
+
 		if (error.code === 11000) {
 			return res.status(400).json({
 				success: false,

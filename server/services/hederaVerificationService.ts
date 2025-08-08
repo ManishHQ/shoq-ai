@@ -31,38 +31,44 @@ export interface MirrorNodeTransaction {
 }
 
 class HederaVerificationService {
-	private readonly HEDERA_TESTNET_MIRROR_URL = 'https://testnet.mirrornode.hedera.com/api/v1';
-	private readonly HEDERA_MAINNET_MIRROR_URL = 'https://mainnet-public.mirrornode.hedera.com/api/v1';
-	private readonly EXPECTED_USDC_TOKEN_ID = process.env.HEDERA_USDC_TOKEN_ID || '0.0.123456'; // Set this to your USDC token ID
-	private readonly SHOQ_TREASURY_ACCOUNT = process.env.SHOQ_TREASURY_ACCOUNT || '0.0.654321'; // Your treasury account
+	private readonly HEDERA_TESTNET_MIRROR_URL =
+		'https://testnet.mirrornode.hedera.com/api/v1';
+	private readonly HEDERA_MAINNET_MIRROR_URL =
+		'https://mainnet-public.mirrornode.hedera.com/api/v1';
+	private readonly EXPECTED_USDC_TOKEN_ID =
+		process.env.HEDERA_USDC_TOKEN_ID || '0.0.123456'; // Set this to your USDC token ID
+	private readonly SHOQ_TREASURY_ACCOUNT =
+		process.env.OPERATOR_ADDRESS || '0.0.654321'; // Your treasury account
 	private readonly NETWORK = process.env.HEDERA_NETWORK || 'testnet'; // 'testnet' or 'mainnet'
-	
+
 	private get mirrorNodeUrl(): string {
-		return this.NETWORK === 'mainnet' 
-			? this.HEDERA_MAINNET_MIRROR_URL 
+		return this.NETWORK === 'mainnet'
+			? this.HEDERA_MAINNET_MIRROR_URL
 			: this.HEDERA_TESTNET_MIRROR_URL;
 	}
 
 	/**
 	 * Verify a Hedera transaction for USDC deposit
 	 */
-	async verifyTransaction(transactionId: string): Promise<HederaTransactionVerification> {
+	async verifyTransaction(
+		transactionId: string
+	): Promise<HederaTransactionVerification> {
 		try {
 			// Validate transaction ID format
 			if (!this.isValidTransactionId(transactionId)) {
 				return {
 					isValid: false,
-					error: 'Invalid transaction ID format'
+					error: 'Invalid transaction ID format',
 				};
 			}
 
 			// Query Hedera Mirror Node
 			const transaction = await this.fetchTransactionFromMirror(transactionId);
-			
+
 			if (!transaction) {
 				return {
 					isValid: false,
-					error: 'Transaction not found on Hedera network'
+					error: 'Transaction not found on Hedera network',
 				};
 			}
 
@@ -70,17 +76,17 @@ class HederaVerificationService {
 			if (transaction.result !== 'SUCCESS') {
 				return {
 					isValid: false,
-					error: `Transaction failed with result: ${transaction.result}`
+					error: `Transaction failed with result: ${transaction.result}`,
 				};
 			}
 
 			// Extract and verify token transfer details
 			const tokenTransfer = this.extractUSDCTransfer(transaction);
-			
+
 			if (!tokenTransfer) {
 				return {
 					isValid: false,
-					error: 'No USDC token transfer found in transaction'
+					error: 'No USDC token transfer found in transaction',
 				};
 			}
 
@@ -88,7 +94,7 @@ class HederaVerificationService {
 			if (!this.isTransferToTreasury(tokenTransfer)) {
 				return {
 					isValid: false,
-					error: 'Transfer is not to Shoq treasury account'
+					error: 'Transfer is not to Shoq treasury account',
 				};
 			}
 
@@ -96,10 +102,11 @@ class HederaVerificationService {
 			const usdcAmount = Math.abs(tokenTransfer.amount) / Math.pow(10, 6);
 
 			// Minimum deposit validation
-			if (usdcAmount < 1) { // Minimum 1 USDC
+			if (usdcAmount < 1) {
+				// Minimum 1 USDC
 				return {
 					isValid: false,
-					error: `Deposit amount too small. Minimum: 1 USDC, received: ${usdcAmount} USDC`
+					error: `Deposit amount too small. Minimum: 1 USDC, received: ${usdcAmount} USDC`,
 				};
 			}
 
@@ -109,14 +116,13 @@ class HederaVerificationService {
 				tokenId: tokenTransfer.token_id,
 				sender: this.findSender(transaction),
 				receiver: this.SHOQ_TREASURY_ACCOUNT,
-				timestamp: transaction.valid_start_timestamp
+				timestamp: transaction.valid_start_timestamp,
 			};
-
 		} catch (error) {
 			console.error('Error verifying Hedera transaction:', error);
 			return {
 				isValid: false,
-				error: `Verification failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+				error: `Verification failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
 			};
 		}
 	}
@@ -134,7 +140,9 @@ class HederaVerificationService {
 	/**
 	 * Fetch transaction details from Hedera Mirror Node
 	 */
-	private async fetchTransactionFromMirror(transactionId: string): Promise<any | null> {
+	private async fetchTransactionFromMirror(
+		transactionId: string
+	): Promise<any | null> {
 		try {
 			// Convert transaction ID format for Mirror Node API
 			// Input: "0.0.5789379@1754584444.553560679"
@@ -149,22 +157,29 @@ class HederaVerificationService {
 					normalizedTxId = `${accountPart}-${timestampParts[0]}-${timestampParts[1]}`;
 				}
 			}
-			
-			console.log(`🔍 Fetching transaction from Mirror Node: ${normalizedTxId}`);
-			
+
+			console.log(
+				`🔍 Fetching transaction from Mirror Node: ${normalizedTxId}`
+			);
+
 			const response = await axios.get(
 				`${this.mirrorNodeUrl}/transactions/${normalizedTxId}`,
 				{
 					timeout: 10000,
 					headers: {
-						'Accept': 'application/json'
-					}
+						Accept: 'application/json',
+					},
 				}
 			);
 
-			if (response.data && response.data.transactions && response.data.transactions.length > 0) {
+			if (
+				response.data &&
+				response.data.transactions &&
+				response.data.transactions.length > 0
+			) {
 				return response.data.transactions[0];
 			}
+			console.log('🔍 Transaction:', response.data);
 
 			return null;
 		} catch (error) {
@@ -172,7 +187,9 @@ class HederaVerificationService {
 				if (error.response?.status === 404) {
 					throw new Error('Transaction not found');
 				}
-				throw new Error(`Mirror node request failed: ${error.response?.statusText || error.message}`);
+				throw new Error(
+					`Mirror node request failed: ${error.response?.statusText || error.message}`
+				);
 			}
 			throw error;
 		}
@@ -182,13 +199,16 @@ class HederaVerificationService {
 	 * Extract USDC token transfer from transaction
 	 */
 	private extractUSDCTransfer(transaction: any): any | null {
-		if (!transaction.token_transfers || !Array.isArray(transaction.token_transfers)) {
+		if (
+			!transaction.token_transfers ||
+			!Array.isArray(transaction.token_transfers)
+		) {
 			return null;
 		}
 
 		// Find USDC token transfers
-		const usdcTransfers = transaction.token_transfers.filter((transfer: any) => 
-			transfer.token_id === this.EXPECTED_USDC_TOKEN_ID
+		const usdcTransfers = transaction.token_transfers.filter(
+			(transfer: any) => transfer.token_id === this.EXPECTED_USDC_TOKEN_ID
 		);
 
 		if (usdcTransfers.length === 0) {
@@ -196,8 +216,9 @@ class HederaVerificationService {
 		}
 
 		// Find the positive transfer (receiver)
-		const positiveTransfer = usdcTransfers.find((transfer: any) => 
-			transfer.amount > 0 && transfer.account === this.SHOQ_TREASURY_ACCOUNT
+		const positiveTransfer = usdcTransfers.find(
+			(transfer: any) =>
+				transfer.amount > 0 && transfer.account === this.SHOQ_TREASURY_ACCOUNT
 		);
 
 		return positiveTransfer || usdcTransfers[0];
@@ -207,7 +228,9 @@ class HederaVerificationService {
 	 * Check if transfer is to our treasury account
 	 */
 	private isTransferToTreasury(transfer: any): boolean {
-		return transfer.account === this.SHOQ_TREASURY_ACCOUNT && transfer.amount > 0;
+		return (
+			transfer.account === this.SHOQ_TREASURY_ACCOUNT && transfer.amount > 0
+		);
 	}
 
 	/**
@@ -221,10 +244,12 @@ class HederaVerificationService {
 
 		// Look for negative token transfer (sender)
 		if (transaction.token_transfers) {
-			const negativeTransfer = transaction.token_transfers.find((transfer: any) =>
-				transfer.token_id === this.EXPECTED_USDC_TOKEN_ID && transfer.amount < 0
+			const negativeTransfer = transaction.token_transfers.find(
+				(transfer: any) =>
+					transfer.token_id === this.EXPECTED_USDC_TOKEN_ID &&
+					transfer.amount < 0
 			);
-			
+
 			if (negativeTransfer) {
 				return negativeTransfer.account;
 			}
@@ -244,23 +269,23 @@ class HederaVerificationService {
 	}> {
 		try {
 			const transaction = await this.fetchTransactionFromMirror(transactionId);
-			
+
 			if (!transaction) {
 				return {
 					exists: false,
-					error: 'Transaction not found'
+					error: 'Transaction not found',
 				};
 			}
 
 			return {
 				exists: true,
 				status: transaction.result,
-				timestamp: transaction.valid_start_timestamp
+				timestamp: transaction.valid_start_timestamp,
 			};
 		} catch (error) {
 			return {
 				exists: false,
-				error: error instanceof Error ? error.message : 'Unknown error'
+				error: error instanceof Error ? error.message : 'Unknown error',
 			};
 		}
 	}
@@ -287,7 +312,7 @@ class HederaVerificationService {
 			if (!this.isValidAccountId(accountId)) {
 				return {
 					success: false,
-					error: 'Invalid account ID format'
+					error: 'Invalid account ID format',
 				};
 			}
 
@@ -309,12 +334,12 @@ class HederaVerificationService {
 			return {
 				success: true,
 				balance: account.balance?.balance || 0,
-				tokenBalances
+				tokenBalances,
 			};
 		} catch (error) {
 			return {
 				success: false,
-				error: error instanceof Error ? error.message : 'Unknown error'
+				error: error instanceof Error ? error.message : 'Unknown error',
 			};
 		}
 	}
@@ -328,8 +353,9 @@ class HederaVerificationService {
 			const timestampSeconds = parseFloat(timestamp);
 			const transactionDate = new Date(timestampSeconds * 1000);
 			const now = new Date();
-			const hoursDiff = (now.getTime() - transactionDate.getTime()) / (1000 * 60 * 60);
-			
+			const hoursDiff =
+				(now.getTime() - transactionDate.getTime()) / (1000 * 60 * 60);
+
 			return hoursDiff <= 24; // Allow transactions up to 24 hours old
 		} catch (error) {
 			return false;
@@ -356,7 +382,7 @@ class HederaVerificationService {
 			network: this.NETWORK,
 			mirrorNodeUrl: this.mirrorNodeUrl,
 			expectedTokenId: this.EXPECTED_USDC_TOKEN_ID,
-			treasuryAccount: this.SHOQ_TREASURY_ACCOUNT
+			treasuryAccount: this.SHOQ_TREASURY_ACCOUNT,
 		};
 	}
 }

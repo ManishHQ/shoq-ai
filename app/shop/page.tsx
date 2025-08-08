@@ -5,6 +5,7 @@ import ProductCard from './components/ProductCard';
 import CategoryFilter from './components/CategoryFilter';
 import SearchBar from './components/SearchBar';
 import PriceFilter from './components/PriceFilter';
+import { API_ENDPOINTS } from '../lib/config';
 
 export interface Product {
 	id: number;
@@ -41,7 +42,7 @@ export default function ShopPage() {
 	const fetchProducts = async () => {
 		try {
 			setLoading(true);
-			let url = 'http://localhost:8000/shop';
+			let url = API_ENDPOINTS.SHOP;
 			const params = new URLSearchParams();
 
 			if (selectedCategory) params.append('category', selectedCategory);
@@ -84,7 +85,7 @@ export default function ShopPage() {
 
 	const fetchCategories = async () => {
 		try {
-			const response = await fetch('http://localhost:8000/shop/categories');
+			const response = await fetch(`${API_ENDPOINTS.SHOP}/categories`);
 			const data = await response.json();
 
 			if (data.status === 'success') {

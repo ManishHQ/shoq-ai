@@ -13,7 +13,11 @@ export interface EmailOptions {
 export const sendEmail = async (options: EmailOptions): Promise<boolean> => {
 	try {
 		// Check if email is configured
-		if (!process.env.SMTP_HOST || !process.env.EMAIL_USERNAME || !process.env.EMAIL_PASSWORD) {
+		if (
+			!process.env.SMTP_HOST ||
+			!process.env.EMAIL_USERNAME ||
+			!process.env.EMAIL_PASSWORD
+		) {
 			console.log('📧 Email not configured - skipping email send');
 			return false;
 		}
@@ -28,8 +32,13 @@ export const sendEmail = async (options: EmailOptions): Promise<boolean> => {
 			},
 		});
 
+		console.log('📧 Attempting to send email:');
+		console.log('   To:', options.to);
+		console.log('   Subject:', options.subject);
+		console.log('   From:', process.env.EMAIL_USERNAME);
+
 		const mailOptions = {
-			from: `"Shoq Bot" <${process.env.EMAIL_USERNAME}>`,
+			from: `"Shoq Store" <${process.env.EMAIL_USERNAME}>`,
 			to: options.to,
 			subject: options.subject,
 			text: options.text,
@@ -38,8 +47,9 @@ export const sendEmail = async (options: EmailOptions): Promise<boolean> => {
 
 		const info = await transporter.sendMail(mailOptions);
 		console.log('✅ Email sent successfully:', info.messageId);
+		console.log('   Message ID:', info.messageId);
+		console.log('   Response:', info.response);
 		return true;
-
 	} catch (error) {
 		console.error('❌ Error sending email:', error);
 		return false;
