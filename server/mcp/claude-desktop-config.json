@@ -1,0 +1,21 @@
+{
+  "mcpServers": {
+    "shoq-ecommerce": {
+      "command": "node",
+      "args": ["/path/to/shoq/app/server/shoq-mcp-server.js"],
+      "env": {
+        "MONGO_URL": "mongodb://localhost:27017/shoq",
+        "GEMINI_API_KEY": "your-gemini-api-key",
+        "OPERATOR_ADDRESS": "0.0.your-hedera-account",
+        "OPERATOR_KEY": "your-hedera-private-key",
+        "SHOP_OWNER_ADDRESS": "0.0.shop-owner-account",
+        "HEDERA_USDC_TOKEN_ID": "0.0.6528760",
+        "FULFILLMENT_EMAIL": "orders@yourstore.com",
+        "EMAIL_USERNAME": "your-smtp-email",
+        "EMAIL_PASSWORD": "your-smtp-password",
+        "SMTP_HOST": "smtp.gmail.com",
+        "JWT_SECRET": "your-jwt-secret"
+      }
+    }
+  }
+}

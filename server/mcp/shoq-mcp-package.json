@@ -1,0 +1,50 @@
+{
+	"name": "shoq-mcp-server",
+	"version": "1.0.0",
+	"description": "MCP server for Shoq e-commerce platform with product management, order processing, and Hedera blockchain integration",
+	"type": "module",
+	"main": "../shoq-mcp-server.js",
+	"bin": {
+		"shoq-mcp-server": "../shoq-mcp-server.js"
+	},
+	"scripts": {
+		"build": "tsc",
+		"start": "node ../shoq-mcp-server.js",
+		"dev": "tsx watch ../shoq-mcp-server.ts"
+	},
+	"keywords": [
+		"mcp",
+		"model-context-protocol",
+		"e-commerce",
+		"shoq",
+		"hedera",
+		"usdc",
+		"ai",
+		"blockchain"
+	],
+	"author": "Shoq Team",
+	"license": "MIT",
+	"dependencies": {
+		"@modelcontextprotocol/sdk": "^0.5.0",
+		"@hashgraph/sdk": "^2.49.2",
+		"mongoose": "^8.0.0",
+		"bcryptjs": "^2.4.3",
+		"jsonwebtoken": "^9.0.2",
+		"cors": "^2.8.5",
+		"dotenv": "^16.3.1",
+		"nodemailer": "^6.9.7",
+		"@google/genai": "^0.3.0"
+	},
+	"devDependencies": {
+		"@types/node": "^20.0.0",
+		"@types/bcryptjs": "^2.4.6",
+		"@types/jsonwebtoken": "^9.0.5",
+		"@types/cors": "^2.8.17",
+		"@types/nodemailer": "^6.4.14",
+		"tsx": "^4.0.0",
+		"typescript": "^5.0.0"
+	},
+	"engines": {
+		"node": ">=18.0.0"
+	}
+}
