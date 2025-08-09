@@ -1,0 +1,10 @@
+# Ignore server directory during Next.js build
+server/
+server/**/*
+
+# Ignore other non-frontend directories
+*.md
+*.sh
+deploy-heroku.sh
+setup-env.sh
+HEROKU_DEPLOYMENT.md

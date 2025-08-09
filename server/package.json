@@ -7,16 +7,14 @@
 	"type": "module",
 	"main": "index.js",
 	"scripts": {
-		"build:dev": "tsc --project tsconfig.json && cp .env dist/.env",
-		"build": "tsx --env-file=.env app.ts",
-		"build:mcp": "tsc --project tsconfig.json",
-		"start": "tsx --env-file=.env app.ts",
-		"start:mcp": "node dist/mcp-server.js",
-		"start:mcp-http": "node dist/mcp-http-server.js",
+		"build": "tsc --project tsconfig.json",
+		"start": "node dist/app.js",
+		"start:dev": "tsx --env-file=.env app.ts",
+		"start:mcp": "node dist/shoq-mcp-server.js",
 		"dev": "tsx watch --env-file=.env app.ts",
-		"dev:mcp": "tsx --env-file=.env mcp-server.ts",
-		"dev:mcp-http": "tsx --env-file=.env mcp-http-server.ts",
-		"test": "node test-server.cjs"
+		"dev:mcp": "tsx --env-file=.env shoq-mcp-server.ts",
+		"test": "node test-server.cjs",
+		"heroku-postbuild": "npm run build"
 	},
 	"engines": {
 		"node": ">=18.x"

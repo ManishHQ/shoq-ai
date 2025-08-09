@@ -1,6 +1,25 @@
-// API Configuration
-export const API_BASE_URL =
-	process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+// API Configuration - dynamically set based on environment
+const getApiBaseUrl = () => {
+	if (typeof window !== 'undefined') {
+		// Client side
+		return (
+			process.env.NEXT_PUBLIC_API_URL ||
+			(process.env.NODE_ENV === 'production'
+				? 'https://api.shoq.live'
+				: 'http://localhost:8000')
+		);
+	} else {
+		// Server side
+		return (
+			process.env.NEXT_PUBLIC_API_URL ||
+			(process.env.NODE_ENV === 'production'
+				? 'https://api.shoq.live'
+				: 'http://localhost:8000')
+		);
+	}
+};
+
+export const API_BASE_URL = getApiBaseUrl();
 
 // API Endpoints
 export const API_ENDPOINTS = {

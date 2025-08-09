@@ -35,17 +35,22 @@ connectDB(
 );
 
 // middleware
-app.use(morgan('dev'));
+app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 app.use(express.json());
-app.use(
-	cors({
-		origin: function (origin, callback) {
-			const allowedOrigins = [
+
+// CORS configuration for production and development
+const allowedOrigins =
+	process.env.NODE_ENV === 'production'
+		? ['https://shoq.live', 'https://www.shoq.live', 'https://api.shoq.live']
+		: [
 				'http://localhost:5173',
 				'http://localhost:3000',
 				'http://localhost:3001',
 			];
 
+app.use(
+	cors({
+		origin: function (origin, callback) {
 			// Allow requests with no origin (like mobile apps or curl requests)
 			if (!origin) return callback(null, true);
 
